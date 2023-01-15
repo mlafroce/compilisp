@@ -1,0 +1,115 @@
+use std::str::FromStr;
+use compilisp::ast::{Expr};
+
+grammar;
+
+// Set aliases and precedences
+
+match {
+    r#"quote|quasiquote|,|,@"# => ABBREV_PREFIX,
+} else {
+    r#"[a-zA-Z!\\$%&*+-./:<=>?@^_~]+"# => STRING,
+    r"[0-9]+" => DIGITS,
+    _
+}
+
+
+// expression:
+//     quotation                   {$$=$1;setQuoted($1);}
+// |   self_evaluating             {$$=$1;setValue($1);}
+// |   procedure_call              {$$=$1;setValue($1);}
+// |   datum                       {$$=$1;setValue($1);}
+
+pub Expression: Expr = {
+    Quotation => <>,
+    //Datum => <>,
+    ProcedureCall => <>,
+};
+
+// quotation:
+//     ABBREV_QUOTE datum          {$$=$2;}
+// |   LPAREN QUOTE datum RPAREN   {$$=$3;}
+Quotation: Expr = {
+    "'" <d:Datum> => d,
+}
+
+SelfEvaluating: Expr = {
+    Num => Expr::Number(<>),
+    Symbol => Expr::Symbol(<>),
+    String => Expr::String(<>),
+}
+
+Num: i32 = {
+    DIGITS => i32::from_str(<>).unwrap()
+};
+
+Symbol: String = {
+    STRING => str::to_owned(<>)
+};
+
+String: String = {
+    r#"""# <s:STRING> r#"""# => str::to_owned(s)
+};
+
+//
+// datum:
+//     self_evaluating         {$$=$1;}
+// |   IDENTIFIER      {$$=symbol($1);}
+// |   LPAREN datum_list RPAREN   {$$=$2;}
+// |   LPAREN datum_list datum DOT datum RPAREN   {$$=listFrom($2,$3,$5);}
+// |   abbrev_prefix datum {$$=$2;}
+// |   HASH_LPAREN datum_list RPAREN   {$$=$2;}
+
+Datum: Expr = {
+    SelfEvaluating => <>,
+    "(" <dl:DatumList> ")" => Expr::List(dl),
+    "(" <mut dl:DatumList> <d1:Datum> "." <d2:Datum> ")" => {
+        dl.push(d1);
+        dl.push(d2);
+        Expr::List(dl)
+    },
+    ABBREV_PREFIX <d1:Datum> => <>,
+    "#(" <dl:DatumList> ")" => Expr::List(dl),
+};
+
+DatumList: Vec<Expr> = {
+    Datum => vec!(<>),
+    <mut list:DatumList> <d:Datum> => { list.push(d); list },
+};
+
+// procedure_call:
+//     LPAREN LET bindings expression RPAREN	    {$$=makeLetProcedure($3, $4, false);}
+// |   LPAREN LET bindings procedure RPAREN	    {$$=makeLetProcedure($3, $4, false);}
+// |   LPAREN LET_STAR bindings expression RPAREN	{$$=makeLetProcedure($3, $4, true);}
+// |   LPAREN LET_STAR bindings procedure RPAREN	{$$=makeLetProcedure($3, $4, true);}
+// |   LPAREN procedure arg_list RPAREN	        {$$=makeProcedure($2, $3);}
+
+ProcedureCall: Expr = {
+    SelfEvaluating => <>,
+    "(let" <b:Bindings> <p:ProcedureCall>")" => Expr::LetProcedure(b, Box::new(p)),
+    "(" <id:Symbol> <args:DatumList> ")" => Expr::Procedure(<>),
+};
+
+// bindings:
+//     LPAREN binding_list RPAREN  {$$=$2;}
+
+// binding_list:
+//     /* empty */             {$$=emptyList();}
+// |   binding_list binding    {$$=listFrom($1,$2,null);}
+
+// binding:
+//     LPAREN IDENTIFIER expression RPAREN {$$=listFrom(emptyList(),symbol($2),$3);}
+// |   LPAREN IDENTIFIER procedure RPAREN {$$=listFrom(emptyList(),symbol($2),$3);}
+
+Bindings: Vec<(String, Expr)> = {
+    "(" <BindingList> ")" => <>
+}
+
+Binding: (String, Expr) = {
+    "(" <Symbol> <Expression> ")" => (<>)
+};
+
+BindingList: Vec<(String, Expr)> = {
+    Binding => vec!(<>),
+    <mut list:BindingList> <b:Binding> => { list.push(b); list },
+};
