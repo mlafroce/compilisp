@@ -2,7 +2,7 @@
 extern crate lalrpop_util;
 
 use clap::Parser;
-use compilisp::backend::llvm::Compiler;
+use compilisp::backend::llvm::Context;
 use std::fs::File;
 use std::io;
 use std::io::Read;
@@ -31,7 +31,7 @@ fn compile(args: CliArgs) -> io::Result<()> {
     let root = parser.parse(&module_text).unwrap();
 
     println!("{:?}: {:?}", args.input, root);
-    let compiler = Compiler::new();
+    let compiler = Context::new();
     compiler.add_module(args.input.as_os_str().to_str().unwrap(), root);
     Ok(())
 }

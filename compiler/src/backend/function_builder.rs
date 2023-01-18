@@ -1,6 +1,6 @@
-use std::ffi::{c_uint, CString};
-use llvm_sys::core::{LLVMAddFunction, LLVMFunctionType, LLVMGetModuleContext, LLVMVoidTypeInContext};
+use llvm_sys::core::*;
 use llvm_sys::prelude::{LLVMBool, LLVMModuleRef, LLVMTypeRef, LLVMValueRef};
+use std::ffi::{c_uint, CString};
 
 pub struct FunctionBuilder {
     name: CString,
@@ -11,7 +11,11 @@ pub struct FunctionBuilder {
 impl FunctionBuilder {
     pub fn new() -> Self {
         let name = CString::new("").unwrap();
-        Self {name, args: vec![], ret_type: None }
+        Self {
+            name,
+            args: vec![],
+            ret_type: None,
+        }
     }
 
     pub fn with_name(mut self, name: &str) -> Self {
@@ -34,13 +38,9 @@ impl FunctionBuilder {
         let ret_type = self.ret_type.unwrap_or(LLVMVoidTypeInContext(context));
         let args_size = self.args.len() as c_uint;
         let args_ptr = self.args.as_mut_ptr();
-        let fn_type = LLVMFunctionType(
-            ret_type,
-            args_ptr,
-            args_size,
-            LLVMBool::from(false),
-        );
+        let fn_type = LLVMFunctionType(ret_type, args_ptr, args_size, LLVMBool::from(false));
         let function = LLVMAddFunction(module, self.name.as_ptr(), fn_type);
+
         (function, fn_type)
     }
 }

@@ -114,6 +114,7 @@ dependencies = [
  "clap",
  "lalrpop",
  "lalrpop-util",
+ "lazy_static",
  "llvm-sys",
  "regex",
 ]

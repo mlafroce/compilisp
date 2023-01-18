@@ -1,26 +1,28 @@
 use crate::ast::Expr;
+use crate::backend::function_builder::FunctionBuilder;
+use crate::backend::function_factory::FunctionFactory;
+use crate::backend::runtime::RuntimeCompiler;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
+use llvm_sys::target_machine::LLVMGetDefaultTargetTriple;
 use std::ffi::{c_char, CString};
-use std::ptr::{null_mut};
-use crate::backend::function::FunctionBuilder;
-use crate::backend::runtime::{FunctionFactory, RuntimeCompiler};
+use std::ptr::null_mut;
 
-pub struct Compiler {
+pub struct Context {
     context: LLVMContextRef,
 }
 
-impl Compiler {
+impl Context {
     pub fn new() -> Self {
         let context = unsafe { LLVMContextCreate() };
         Self { context }
     }
 
     pub fn add_module(&self, name: &str, root: Expr) {
-        let module_name = CString::new(name).unwrap();
-        let output_name = CString::new(name.replace(".scheme", ".ll")).unwrap();
+        let module = self.create_module(name);
         unsafe {
-            let module = LLVMModuleCreateWithNameInContext(module_name.as_ptr(), self.context);
+            let target = LLVMGetDefaultTargetTriple();
+            LLVMSetTarget(module, target);
             let builder = LLVMCreateBuilderInContext(self.context);
             let function_factory = FunctionFactory::new_with_base(module);
 
@@ -29,16 +31,22 @@ impl Compiler {
 
             let runtime = RuntimeCompiler::init(builder, function_factory);
 
-            runtime.process_expr(module, builder,&root);
+            runtime.process_expr(module, builder, &root);
 
             runtime.destroy(builder);
 
             LLVMPositionBuilderAtEnd(builder, main_block);
-            let ret_value = LLVMConstInt(LLVMInt32TypeInContext(self.context), 0, LLVMBool::from(false));
+            let ret_value = LLVMConstInt(
+                LLVMInt32TypeInContext(self.context),
+                0,
+                LLVMBool::from(false),
+            );
             LLVMBuildRet(builder, ret_value);
 
             let mut error_msg: *mut c_char = null_mut();
-            println!("writing {}", output_name.to_str().unwrap());
+            let output_name = name.replace(".scheme", ".ll");
+            println!("writing {}", output_name);
+            let output_name = CString::new(output_name).unwrap();
             LLVMPrintModuleToFile(module, output_name.as_ptr(), &mut error_msg);
 
             LLVMDisposeBuilder(builder);
@@ -46,8 +54,13 @@ impl Compiler {
         };
     }
 
+    fn create_module(&self, input_name: &str) -> LLVMModuleRef {
+        let module_name = CString::new(input_name).unwrap();
+        unsafe { LLVMModuleCreateWithNameInContext(module_name.as_ptr(), self.context) }
+    }
+
     unsafe fn build_main_function(&self, module: LLVMModuleRef) -> LLVMBasicBlockRef {
-        let char_type= LLVMInt8TypeInContext(self.context);
+        let char_type = LLVMInt8TypeInContext(self.context);
 
         let builder = FunctionBuilder::new()
             .with_name("main")
@@ -60,7 +73,7 @@ impl Compiler {
     }
 }
 
-impl Drop for Compiler {
+impl Drop for Context {
     fn drop(&mut self) {
         unsafe { LLVMContextDispose(self.context) };
     }

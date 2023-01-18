@@ -22,7 +22,7 @@ match {
 
 pub Expression: Expr = {
     Quotation => <>,
-    //Datum => <>,
+    SelfEvaluating => <>,
     ProcedureCall => <>,
 };
 
@@ -35,7 +35,6 @@ Quotation: Expr = {
 
 SelfEvaluating: Expr = {
     Num => Expr::Number(<>),
-    Symbol => Expr::Symbol(<>),
     String => Expr::String(<>),
 }
 
@@ -62,6 +61,7 @@ String: String = {
 
 Datum: Expr = {
     SelfEvaluating => <>,
+    ProcedureCall => <>,
     "(" <dl:DatumList> ")" => Expr::List(dl),
     "(" <mut dl:DatumList> <d1:Datum> "." <d2:Datum> ")" => {
         dl.push(d1);
@@ -85,7 +85,6 @@ DatumList: Vec<Expr> = {
 // |   LPAREN procedure arg_list RPAREN	        {$$=makeProcedure($2, $3);}
 
 ProcedureCall: Expr = {
-    SelfEvaluating => <>,
     "(let" <b:Bindings> <p:ProcedureCall>")" => Expr::LetProcedure(b, Box::new(p)),
     "(" <id:Symbol> <args:DatumList> ")" => Expr::Procedure(<>),
 };
