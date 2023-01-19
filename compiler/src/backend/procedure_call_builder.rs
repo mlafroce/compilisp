@@ -155,8 +155,7 @@ pub unsafe fn build_expr_in_stack(
                 result_type_ptr,
                 EMPTY_STR.as_ptr(),
             );
-            call_builder.procedure_push_arg_tuple(result_type, result_value);
-            (result_type_ptr, result_value)
+            (result_type, result_value)
         }
         _ => unimplemented!(),
     }
