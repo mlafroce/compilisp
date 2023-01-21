@@ -47,38 +47,50 @@ impl<'a> CompilispRuntime {
     }
 
     pub fn procedure_push_arg(&mut self, arg: CompilispValue) {
-        println!("-> Push process arg: {:?}", arg);
+        println!("-> Push process arg: {arg:?}");
         self.args.push(arg);
     }
 
-    pub fn procedure_call(&mut self, procedure_name: &str) -> CompilispResult<CompilispValue> {
+    pub fn procedure_call(&mut self, procedure_name: &str, stack_size: u8) -> CompilispResult<CompilispValue> {
         println!("-- procedure call: {procedure_name:?}");
+        let args = self.pop_args(stack_size);
         match procedure_name {
             "+" => {
-                let resolved_args = self.resolved_args()?;
+                let resolved_args = self.resolve(&args)?;
                 let result = compilisp_sum(resolved_args.as_slice());
-                self.args.clear();
                 result
             }
             "display" => {
-                if let Some(value) = self.args.get(0) {
-                    println!("Display: {value:?}");
-                } else {
-                    println!("Display: Nul");
+                for value in &args {
+                    match value {
+                        CompilispValue::Number(num) => print!("{}", num),
+                        CompilispValue::String(value) => print!("{}", value),
+                        CompilispValue::Symbol(name) => {
+                            if let Ok(value) = self.resolve_symbol(&value) {
+                                print!("{:?}", value);
+                            } else {
+                                print!("Nil");
+                            }
+                        },
+                    }
+                    print!(" ");
                 }
-                self.args.clear();
                 // TODO: void return
                 Ok(CompilispValue::Number(0))
             }
             _ => {
-                self.args.clear();
                 Err(CompilispError::UnboundVariable(procedure_name.to_string()))
             }
         }
     }
 
-    fn resolved_args(&self) -> CompilispResult<Vec<&CompilispValue>> {
-        self.args
+    fn pop_args(&mut self, stack_size: u8) -> Vec<CompilispValue> {
+        let new_len = self.args.len() - stack_size as usize;
+        self.args.drain(new_len..).collect::<Vec<_>>()
+    }
+
+    fn resolve(&'a self, args: &'a Vec<CompilispValue>) -> CompilispResult<Vec<&CompilispValue>> {
+        args
             .iter()
             .map(|value| self.resolve_symbol(value))
             .collect()
@@ -144,12 +156,13 @@ pub unsafe extern "C" fn compilisp_procedure_push_arg(
 pub unsafe extern "C" fn compilisp_procedure_call(
     _self: *mut CompilispRuntime,
     procedure_name: *const c_char,
+    stack_size: u8,
     result_type: *mut i8,
     result_value: *mut i32,
 ) -> i32 {
     let mut _self = &mut *_self;
     let c_procedure_name = CStr::from_ptr(procedure_name);
-    let result = _self.procedure_call(c_procedure_name.to_str().unwrap());
+    let result = _self.procedure_call(c_procedure_name.to_str().unwrap(), stack_size);
     println!("Should return {result:?}");
     if let Ok(value) = result {
         match value {

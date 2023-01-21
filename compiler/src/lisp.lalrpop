@@ -8,7 +8,9 @@ grammar;
 match {
     r#"quote|quasiquote|,|,@"# => ABBREV_PREFIX,
 } else {
-    r#"[a-zA-Z!\\$%&*+-./:<=>?@^_~]+"# => STRING,
+    r#"[a-zA-Z!\\$%&*+-./:<=>?@^_~][0-9a-zA-Z!\\$%&*+-./:<=>?@^_~]*"# => SYMBOL,
+} else {
+    r#""[^"]*""# => STRING,
     r"[0-9]+" => DIGITS,
     _
 }
@@ -44,11 +46,11 @@ Num: i32 = {
 };
 
 Symbol: String = {
-    STRING => str::to_owned(<>)
+    SYMBOL => str::to_owned(<>)
 };
 
 String: String = {
-    r#"""# <s:STRING> r#"""# => str::to_owned(s)
+    <s:STRING> => str::to_owned(&s[1..s.len() - 1])
 };
 
 //

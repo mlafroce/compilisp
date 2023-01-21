@@ -44,3 +44,9 @@ impl FunctionBuilder {
         (function, fn_type)
     }
 }
+
+impl Default for FunctionBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -1,8 +1,15 @@
-all: let_sum
+TESTS=let_sum conditional
+LLVM_FILES=$(patsubst %, %.ll, $(TESTS))
 
-let_sum.ll: let_sum.scheme 
-	cargo run -- let_sum.scheme
-let_sum: let_sum.ll
-	clang $^ target/debug/libruntime.a -o $@
+all: $(TESTS)
 
-.PHONY: let_sum
+%.ll: tests/%.scheme 
+	cargo run -- $<
+
+%: %.ll
+	clang tests/$^ target/debug/libruntime.a -o $@
+
+clean:
+	$(RM) $(TESTS) $(LLVM_FILES)
+
+.PHONY: all clean

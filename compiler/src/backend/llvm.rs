@@ -55,7 +55,7 @@ impl Context {
             LLVMDIBuilderFinalize(di_builder);
 
             let mut error_msg: *mut c_char = null_mut();
-            println!("writing {}", output_name);
+            println!("writing {output_name}");
             let output_name = CString::new(output_name).unwrap();
             LLVMPrintModuleToFile(module, output_name.as_ptr(), &mut error_msg);
 
@@ -87,6 +87,12 @@ impl Context {
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe { LLVMContextDispose(self.context) };
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

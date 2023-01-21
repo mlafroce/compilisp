@@ -5,6 +5,10 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::{c_uint, c_ulonglong, CString};
 
+pub const NUMBER_DISCRIMINATOR: c_ulonglong = 0;
+pub const STR_DISCRIMINATOR: c_ulonglong = 1;
+pub const SYMBOL_DISCRIMINATOR: c_ulonglong = 2;
+
 pub struct ProcedureCallBuilder {
     runtime_ref: LLVMValueRef,
     function_factory: FunctionFactory,
@@ -33,12 +37,30 @@ impl ProcedureCallBuilder {
         args: &Vec<Expr>,
     ) -> (LLVMValueRef, LLVMValueRef) {
         for expr in args {
-            self.procedure_push_arg(expr);
+            self.procedure_generic_push_arg(expr);
         }
-        self.procedure_call(name)
+        self.procedure_generic_call(name, args.len())
     }
 
-    unsafe fn procedure_push_arg(&self, arg: &Expr) {
+    unsafe fn procedure_create_stack(&self, arg: &Expr) {
+        let (fn_ref, fn_argtypes) = self
+            .function_factory
+            .get("compilisp_procedure_create_stack")
+            .copied()
+            .unwrap();
+
+        let mut args = [self.runtime_ref];
+        LLVMBuildCall2(
+            self.builder,
+            fn_argtypes,
+            fn_ref,
+            args.as_mut_ptr(),
+            args.len() as c_uint,
+            EMPTY_STR.as_ptr(),
+        );
+    }
+
+    unsafe fn procedure_generic_push_arg(&self, arg: &Expr) {
         let (bind_type, bind_value) = build_expr_in_stack(
             self.runtime_ref,
             self.function_factory.clone(),
@@ -67,7 +89,7 @@ impl ProcedureCallBuilder {
         );
     }
 
-    unsafe fn procedure_call(&self, name: &str) -> (LLVMValueRef, LLVMValueRef) {
+    unsafe fn procedure_generic_call(&self, name: &str, stack_size: usize) -> (LLVMValueRef, LLVMValueRef) {
         let context = LLVMGetModuleContext(self.module);
         let (fn_ref, fn_argtypes) = self
             .function_factory
@@ -78,6 +100,9 @@ impl ProcedureCallBuilder {
         let c_name_var = CString::new("procedure_name").unwrap();
         let name_value =
             LLVMBuildGlobalStringPtr(self.builder, c_name.as_ptr(), c_name_var.as_ptr());
+
+        let bind_type_type = LLVMInt8TypeInContext(context);
+        let stack_size_value = LLVMConstInt(bind_type_type, stack_size as c_ulonglong , LLVMBool::from(false));
 
         let result_type_name = CString::new("res_type").unwrap();
         let result_name = CString::new("result").unwrap();
@@ -96,6 +121,7 @@ impl ProcedureCallBuilder {
         let mut args = [
             self.runtime_ref,
             name_value,
+            stack_size_value,
             res_type_alloc,
             result_alloc_i8,
         ];
@@ -123,6 +149,7 @@ pub unsafe fn build_expr_in_stack(
     match expr {
         Expr::Number(num) => build_number_in_stack(context, builder, *num),
         Expr::Symbol(name) => build_symbol_in_stack(context, builder, name.as_str()),
+        Expr::String(value) => build_str_in_stack(context, builder, value.as_str()),
         Expr::Procedure(proc_name, args) => {
             let call_builder =
                 ProcedureCallBuilder::new(runtime_ref, function_factory, module, builder);
@@ -153,7 +180,22 @@ unsafe fn build_symbol_in_stack(
 
     let bind_type_type = LLVMInt8TypeInContext(context);
     // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, 2, LLVMBool::from(false));
+    let value_discriminator = LLVMConstInt(bind_type_type, SYMBOL_DISCRIMINATOR, LLVMBool::from(false));
+    (value_discriminator, name_ptr)
+}
+
+unsafe fn build_str_in_stack(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    name: &str,
+) -> (LLVMValueRef, LLVMValueRef) {
+    let c_name = CString::new(name).unwrap();
+    let c_name_var = CString::new("str").unwrap();
+    let name_ptr = LLVMBuildGlobalStringPtr(builder, c_name.as_ptr(), c_name_var.as_ptr());
+
+    let bind_type_type = LLVMInt8TypeInContext(context);
+    // Expr::Number identifier is 0
+    let value_discriminator = LLVMConstInt(bind_type_type, STR_DISCRIMINATOR, LLVMBool::from(false));
     (value_discriminator, name_ptr)
 }
 
@@ -176,6 +218,6 @@ unsafe fn build_number_in_stack(
 
     let bind_type_type = LLVMInt8TypeInContext(context);
     // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, 0, LLVMBool::from(false));
+    let value_discriminator = LLVMConstInt(bind_type_type, NUMBER_DISCRIMINATOR, LLVMBool::from(false));
     (value_discriminator, i8_alloca)
 }

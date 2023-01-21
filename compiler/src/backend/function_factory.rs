@@ -64,6 +64,7 @@ impl FunctionFactory {
             .with_name("compilisp_procedure_call")
             .add_arg(opaque_pointer) // context
             .add_arg(opaque_pointer) // procedure name
+            .add_arg(char_type) // procedure name
             .add_arg(opaque_pointer) // result type
             .add_arg(opaque_pointer); // result value
         let cur_fn = fn_builder.build(module);
