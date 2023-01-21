@@ -56,7 +56,7 @@ impl ProcedureCallBuilder {
             .copied()
             .unwrap();
 
-        let mut args = [self.runtime_ref.clone(), arg_type, arg_value];
+        let mut args = [self.runtime_ref, arg_type, arg_value];
         LLVMBuildCall2(
             self.builder,
             fn_argtypes,
@@ -94,7 +94,7 @@ impl ProcedureCallBuilder {
             LLVMBuildBitCast(self.builder, result_alloc, opaque_ptr_t, EMPTY_STR.as_ptr());
 
         let mut args = [
-            self.runtime_ref.clone(),
+            self.runtime_ref,
             name_value,
             res_type_alloc,
             result_alloc_i8,
@@ -107,7 +107,7 @@ impl ProcedureCallBuilder {
             args.len() as c_uint,
             EMPTY_STR.as_ptr(),
         );
-        return (res_type_alloc, result_alloc_i8);
+        (res_type_alloc, result_alloc_i8)
     }
 }
 
@@ -121,27 +121,8 @@ pub unsafe fn build_expr_in_stack(
 ) -> (LLVMValueRef, LLVMValueRef) {
     let context = LLVMGetModuleContext(module);
     match expr {
-        Expr::Number(num) => {
-            let name = CString::new("value").unwrap();
-
-            let bind_value_type = LLVMInt32TypeInContext(context);
-            // Create stack space for i32
-            let alloca = LLVMBuildAlloca(builder, bind_value_type, name.as_ptr());
-            // Create constant `num`
-            let bind_value =
-                LLVMConstInt(bind_value_type, *num as c_ulonglong, LLVMBool::from(false));
-            // Save constant in stack
-            LLVMBuildStore(builder, bind_value, alloca);
-            let bind_value_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-            // Cast stack address to *i8 (reuse previous i8 type)
-            let i8_alloca =
-                LLVMBuildPointerCast(builder, alloca, bind_value_type, EMPTY_STR.as_ptr());
-
-            let bind_type_type = LLVMInt8TypeInContext(context);
-            // Expr::Number identifier is 0
-            let bind_type = LLVMConstInt(bind_type_type, 0, LLVMBool::from(false));
-            (bind_type, i8_alloca)
-        }
+        Expr::Number(num) => build_number_in_stack(context, builder, *num),
+        Expr::Symbol(name) => build_symbol_in_stack(context, builder, name.as_str()),
         Expr::Procedure(proc_name, args) => {
             let call_builder =
                 ProcedureCallBuilder::new(runtime_ref, function_factory, module, builder);
@@ -159,4 +140,42 @@ pub unsafe fn build_expr_in_stack(
         }
         _ => unimplemented!(),
     }
+}
+
+unsafe fn build_symbol_in_stack(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    name: &str,
+) -> (LLVMValueRef, LLVMValueRef) {
+    let c_name = CString::new(name).unwrap();
+    let c_name_var = CString::new("symbol_name").unwrap();
+    let name_ptr = LLVMBuildGlobalStringPtr(builder, c_name.as_ptr(), c_name_var.as_ptr());
+
+    let bind_type_type = LLVMInt8TypeInContext(context);
+    // Expr::Number identifier is 0
+    let value_discriminator = LLVMConstInt(bind_type_type, 2, LLVMBool::from(false));
+    (value_discriminator, name_ptr)
+}
+
+unsafe fn build_number_in_stack(
+    context: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    num: i32,
+) -> (LLVMValueRef, LLVMValueRef) {
+    let name = CString::new("value").unwrap();
+    let bind_value_type = LLVMInt32TypeInContext(context);
+    // Create stack space for i32
+    let alloca = LLVMBuildAlloca(builder, bind_value_type, name.as_ptr());
+    // Create constant `num`
+    let bind_value = LLVMConstInt(bind_value_type, num as c_ulonglong, LLVMBool::from(false));
+    // Save constant in stack
+    LLVMBuildStore(builder, bind_value, alloca);
+    let bind_value_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
+    // Cast stack address to *i8 (reuse previous i8 type)
+    let i8_alloca = LLVMBuildPointerCast(builder, alloca, bind_value_type, EMPTY_STR.as_ptr());
+
+    let bind_type_type = LLVMInt8TypeInContext(context);
+    // Expr::Number identifier is 0
+    let value_discriminator = LLVMConstInt(bind_type_type, 0, LLVMBool::from(false));
+    (value_discriminator, i8_alloca)
 }

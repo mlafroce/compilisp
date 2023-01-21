@@ -3,8 +3,14 @@ use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::runtime::RuntimeCompiler;
 use llvm_sys::core::*;
+use llvm_sys::debuginfo::LLVMDWARFEmissionKind::LLVMDWARFEmissionKindFull;
+use llvm_sys::debuginfo::{
+    LLVMCreateDIBuilder, LLVMDIBuilderCreateCompileUnit, LLVMDIBuilderCreateFile,
+    LLVMDIBuilderFinalize, LLVMDWARFSourceLanguage, LLVMDisposeDIBuilder,
+};
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::LLVMGetDefaultTargetTriple;
+use llvm_sys::LLVMModuleFlagBehavior;
 use std::ffi::{c_char, CString};
 use std::ptr::null_mut;
 
@@ -29,6 +35,9 @@ impl Context {
             let main_block = self.build_main_function(module);
             LLVMPositionBuilderAtEnd(builder, main_block);
 
+            let output_name = name.replace(".scheme", ".ll");
+            let di_builder = create_di_builder(module, name);
+
             let runtime = RuntimeCompiler::init(builder, function_factory);
 
             runtime.process_expr(module, builder, &root);
@@ -43,12 +52,14 @@ impl Context {
             );
             LLVMBuildRet(builder, ret_value);
 
+            LLVMDIBuilderFinalize(di_builder);
+
             let mut error_msg: *mut c_char = null_mut();
-            let output_name = name.replace(".scheme", ".ll");
             println!("writing {}", output_name);
             let output_name = CString::new(output_name).unwrap();
             LLVMPrintModuleToFile(module, output_name.as_ptr(), &mut error_msg);
 
+            LLVMDisposeDIBuilder(di_builder);
             LLVMDisposeBuilder(builder);
             LLVMDisposeModule(module)
         };
@@ -77,4 +88,53 @@ impl Drop for Context {
     fn drop(&mut self) {
         unsafe { LLVMContextDispose(self.context) };
     }
+}
+
+unsafe fn create_di_builder(module: LLVMModuleRef, name: &str) -> LLVMDIBuilderRef {
+    let debug_version = CString::new("Debug Info Version").unwrap();
+    let debug_version_value =
+        LLVMValueAsMetadata(LLVMConstInt(LLVMInt32Type(), 3, LLVMBool::from(false)));
+    LLVMAddModuleFlag(
+        module,
+        LLVMModuleFlagBehavior::LLVMModuleFlagBehaviorWarning,
+        debug_version.as_ptr(),
+        debug_version.as_bytes().len(),
+        debug_version_value,
+    );
+    let name_in_debuginfo = CString::new(name).unwrap();
+    let work_dir = CString::new(".").unwrap();
+    let di_producer = CString::new("LLVM Compilisp").unwrap();
+    let split_name = CString::new("Unknown data").unwrap();
+    let flags = "\0";
+
+    let di_builder = LLVMCreateDIBuilder(module);
+    let compile_unit_file = LLVMDIBuilderCreateFile(
+        di_builder,
+        name_in_debuginfo.as_ptr(),
+        name_in_debuginfo.as_bytes().len(),
+        work_dir.as_ptr().cast(),
+        work_dir.as_bytes().len(),
+    );
+    LLVMDIBuilderCreateCompileUnit(
+        di_builder,
+        LLVMDWARFSourceLanguage::LLVMDWARFSourceLanguageC, // Should be Compilisp :P
+        compile_unit_file,
+        di_producer.as_ptr(),
+        di_producer.as_bytes().len(),
+        LLVMBool::from(false),
+        flags.as_ptr().cast(),
+        0,
+        0,
+        split_name.as_ptr(),
+        split_name.as_bytes().len(),
+        LLVMDWARFEmissionKindFull,
+        1,
+        LLVMBool::from(false),
+        LLVMBool::from(false),
+        "".as_ptr().cast(),
+        0,
+        "".as_ptr().cast(),
+        0,
+    );
+    di_builder
 }

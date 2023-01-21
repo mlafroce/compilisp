@@ -28,11 +28,16 @@ fn compile(args: CliArgs) -> io::Result<()> {
     module_file.read_to_string(&mut module_text)?;
 
     let parser = lisp::ExpressionParser::new();
-    let root = parser.parse(&module_text).unwrap();
-
-    println!("{:?}: {:?}", args.input, root);
-    let compiler = Context::new();
-    compiler.add_module(args.input.as_os_str().to_str().unwrap(), root);
+    match parser.parse(&module_text) {
+        Ok(root) => {
+            println!("{:?}: {:?}", args.input, root);
+            let compiler = Context::new();
+            compiler.add_module(args.input.as_os_str().to_str().unwrap(), root);
+        }
+        Err(e) => {
+            println!("Failed to compile: {e:?}");
+        }
+    }
     Ok(())
 }
 

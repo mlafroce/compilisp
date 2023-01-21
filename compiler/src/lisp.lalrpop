@@ -36,6 +36,7 @@ Quotation: Expr = {
 SelfEvaluating: Expr = {
     Num => Expr::Number(<>),
     String => Expr::String(<>),
+    Symbol => Expr::Symbol(<>),
 }
 
 Num: i32 = {
@@ -61,15 +62,14 @@ String: String = {
 
 Datum: Expr = {
     SelfEvaluating => <>,
-    ProcedureCall => <>,
-    "(" <dl:DatumList> ")" => Expr::List(dl),
-    "(" <mut dl:DatumList> <d1:Datum> "." <d2:Datum> ")" => {
-        dl.push(d1);
-        dl.push(d2);
-        Expr::List(dl)
-    },
+    ProcedureCall=> <>,
+//    "(" <mut dl:DatumList> <d1:Datum> "." <d2:Datum> ")" => {
+//        dl.push(d1);
+//        dl.push(d2);
+//        Expr::List(dl)
+//    },
     ABBREV_PREFIX <d1:Datum> => <>,
-    "#(" <dl:DatumList> ")" => Expr::List(dl),
+//    "#(" <dl:DatumList> ")" => Expr::List(dl),
 };
 
 DatumList: Vec<Expr> = {

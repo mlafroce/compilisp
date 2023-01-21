@@ -1,4 +1,3 @@
-use crate::runtime::CompilispValue::Number;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
 
@@ -14,6 +13,7 @@ type CompilispResult<T> = Result<T, CompilispError>;
 pub enum CompilispValue {
     Number(i32),
     String(String),
+    Symbol(String),
 }
 
 #[derive(Default)]
@@ -22,7 +22,7 @@ pub struct CompilispRuntime {
     args: Vec<CompilispValue>,
 }
 
-impl CompilispRuntime {
+impl<'a> CompilispRuntime {
     pub fn new() -> Self {
         Self {
             ..Default::default()
@@ -35,7 +35,7 @@ impl CompilispRuntime {
     }
 
     pub fn push_let_binding(&mut self, bind_name: &str, bind_value: CompilispValue) {
-        println!("-- Binding {:?} -> {:?}", bind_name, bind_value);
+        println!("-- Binding {bind_name:?} -> {bind_value:?}");
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(bind_name.to_owned(), bind_value);
         }
@@ -52,22 +52,23 @@ impl CompilispRuntime {
     }
 
     pub fn procedure_call(&mut self, procedure_name: &str) -> CompilispResult<CompilispValue> {
-        println!("-- procedure call: {:?}", procedure_name);
+        println!("-- procedure call: {procedure_name:?}");
         match procedure_name {
             "+" => {
-                let result = compilisp_sum(self.args.as_slice());
+                let resolved_args = self.resolved_args()?;
+                let result = compilisp_sum(resolved_args.as_slice());
                 self.args.clear();
                 result
             }
             "display" => {
                 if let Some(value) = self.args.get(0) {
-                    println!("Display: {:?}", value);
+                    println!("Display: {value:?}");
                 } else {
                     println!("Display: Nul");
                 }
                 self.args.clear();
                 // TODO: void return
-                Ok(Number(0))
+                Ok(CompilispValue::Number(0))
             }
             _ => {
                 self.args.clear();
@@ -75,15 +76,35 @@ impl CompilispRuntime {
             }
         }
     }
+
+    fn resolved_args(&self) -> CompilispResult<Vec<&CompilispValue>> {
+        self.args
+            .iter()
+            .map(|value| self.resolve_symbol(value))
+            .collect()
+    }
+
+    fn resolve_symbol(&'a self, value: &'a CompilispValue) -> CompilispResult<&CompilispValue> {
+        if let CompilispValue::Symbol(name) = value {
+            let scope = self.scopes.last().unwrap();
+            let resolved = scope.get(name);
+            resolved.ok_or(CompilispError::UnboundVariable(name.clone()))
+        } else {
+            Ok(value)
+        }
+    }
 }
 
-fn compilisp_sum(args: &[CompilispValue]) -> CompilispResult<CompilispValue> {
+fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
     let mut result = 0;
     for arg in args {
-        if let CompilispValue::Number(value) = arg {
-            result += value;
-        } else {
-            return Err(CompilispError::ArgTypeMismatch);
+        match arg {
+            CompilispValue::Number(value) => {
+                result += value;
+            }
+            _ => {
+                return Err(CompilispError::ArgTypeMismatch);
+            }
         }
     }
     Ok(CompilispValue::Number(result))
@@ -129,7 +150,7 @@ pub unsafe extern "C" fn compilisp_procedure_call(
     let mut _self = &mut *_self;
     let c_procedure_name = CStr::from_ptr(procedure_name);
     let result = _self.procedure_call(c_procedure_name.to_str().unwrap());
-    println!("Should return {:?}", result);
+    println!("Should return {result:?}");
     if let Ok(value) = result {
         match value {
             CompilispValue::Number(value) => {
@@ -138,11 +159,11 @@ pub unsafe extern "C" fn compilisp_procedure_call(
             }
             _ => panic!("Only number operations supported"),
         }
-        return 0;
+         0
     } else {
         match result {
-            Err(CompilispError::UnboundVariable(_)) => return 1,
-            Err(CompilispError::ArgTypeMismatch) => return 2,
+            Err(CompilispError::UnboundVariable(_)) => 1,
+            Err(CompilispError::ArgTypeMismatch) => 2,
             _ => unreachable!(),
         }
     }
@@ -171,12 +192,18 @@ pub unsafe extern "C" fn compilisp_push_let_binding(
     _self.push_let_binding(bind_name, bind_value);
 }
 
+/// Pushes a new let binding scope
+/// # Safety
+/// _self is a valid CompilispRuntime instance
 #[no_mangle]
 pub unsafe extern "C" fn compilisp_pop_let_context(_self: *mut CompilispRuntime) {
     let mut _self = &mut *_self;
     _self.pop_let_context();
 }
 
+/// Removes last let binding scope
+/// # Safety
+/// _self is a valid CompilispRuntime instance
 #[no_mangle]
 pub unsafe extern "C" fn compilisp_push_arg(_self: *mut CompilispRuntime) {
     let mut _self = &mut *_self;
@@ -187,10 +214,15 @@ unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispV
     if bind_type == 0 {
         let value = *(bind_value as *const i32);
         CompilispValue::Number(value)
-    } else {
+    } else if bind_type == 1 {
         let value = CStr::from_ptr(bind_value as *const c_char)
             .to_str()
             .unwrap();
         CompilispValue::String(value.to_owned())
+    } else {
+        let value = CStr::from_ptr(bind_value as *const c_char)
+            .to_str()
+            .unwrap();
+        CompilispValue::Symbol(value.to_owned())
     }
 }

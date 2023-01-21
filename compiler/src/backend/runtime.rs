@@ -101,7 +101,7 @@ impl RuntimeCompiler {
         );
 
         for (binding_name, binding_expr) in bindings {
-            self.bind_let_value(module, builder, &binding_name, binding_expr);
+            self.bind_let_value(module, builder, binding_name, binding_expr);
         }
         self.process_expr(module, builder, expression)
     }

@@ -1,5 +1,5 @@
 (let ((x 2))
- (display
-   (+ 3 6)
- )
+  (display
+    (+ 3 x)
+  )
 )
