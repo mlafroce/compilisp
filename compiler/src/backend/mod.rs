@@ -1,3 +1,4 @@
+pub mod expr_builder;
 pub mod function_builder;
 pub mod function_factory;
 pub mod llvm;

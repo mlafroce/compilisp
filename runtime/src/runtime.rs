@@ -63,11 +63,11 @@ impl<'a> CompilispRuntime {
             "display" => {
                 for value in &args {
                     match value {
-                        CompilispValue::Number(num) => print!("{}", num),
-                        CompilispValue::String(value) => print!("{}", value),
-                        CompilispValue::Symbol(name) => {
-                            if let Ok(value) = self.resolve_symbol(&value) {
-                                print!("{:?}", value);
+                        CompilispValue::Number(num) => print!("{num}"),
+                        CompilispValue::String(value) => print!("{value}"),
+                        CompilispValue::Symbol(_) => {
+                            if let Ok(value) = self.resolve_symbol(value) {
+                                print!("{value:?}");
                             } else {
                                 print!("Nil");
                             }
@@ -89,7 +89,7 @@ impl<'a> CompilispRuntime {
         self.args.drain(new_len..).collect::<Vec<_>>()
     }
 
-    fn resolve(&'a self, args: &'a Vec<CompilispValue>) -> CompilispResult<Vec<&CompilispValue>> {
+    fn resolve(&'a self, args: &'a [CompilispValue]) -> CompilispResult<Vec<&CompilispValue>> {
         args
             .iter()
             .map(|value| self.resolve_symbol(value))
