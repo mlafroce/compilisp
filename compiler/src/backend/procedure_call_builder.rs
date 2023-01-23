@@ -1,9 +1,10 @@
 use crate::ast::Expr;
 use crate::backend::function_factory::FunctionFactory;
-use crate::backend::runtime::EMPTY_STR;
+use crate::backend::runtime::{EMPTY_STR, ELSE_STR, FINALLY_STR, THEN_STR};
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::{c_uint, c_ulonglong, CString};
+use llvm_sys::LLVMOpcode::LLVMLoad;
 use crate::backend::expr_builder::ExprBuilder;
 
 pub struct ProcedureCallBuilder<'a> {
@@ -31,23 +32,64 @@ impl<'a> ProcedureCallBuilder<'a> {
         }
     }
     /// Returns a tuple with result expr value ref
-    pub unsafe fn process_procedure(
+    pub fn process_procedure(
         &self,
         name: &str,
-        args: &Vec<Expr>,
+        args: &[Expr],
     ) -> (LLVMValueRef, LLVMValueRef) {
+        match name {
+            "if" => self.build_if_call(args),
+            _=> self.build_generic_call(name, args)
+        }
+    }
+
+    fn build_if_call(&self, args: &[Expr]) -> (LLVMValueRef, LLVMValueRef) {
+        // TODO: Check args
+        let context = unsafe { LLVMGetModuleContext(self.module) };
+        let arg_condition = args.get(0).unwrap();
+        let arg_branch_true = args.get(1).unwrap();
+        let arg_branch_false = args.get(2).unwrap();
+        let eval_condition = self.expr_builder.build_expr(arg_condition);
+        unsafe {
+            // assume value is an integer
+            let ptr_to_bool = LLVMBuildPointerCast(self.builder, eval_condition.1, LLVMPointerType(LLVMInt32TypeInContext(context), 0), EMPTY_STR.as_ptr());
+            let cond_value = LLVMBuildLoad2(self.builder, LLVMInt32TypeInContext(context), ptr_to_bool, EMPTY_STR.as_ptr());
+            let cond_value_bool = LLVMBuildIntCast2(self.builder, cond_value, LLVMInt1TypeInContext(context), LLVMBool::from(false), EMPTY_STR.as_ptr());
+            let block_then =  LLVMCreateBasicBlockInContext(context, THEN_STR.as_ptr());
+            let block_else =  LLVMCreateBasicBlockInContext(context, ELSE_STR.as_ptr());
+            let block_finally = LLVMCreateBasicBlockInContext(context, FINALLY_STR.as_ptr());
+
+            // If condition {
+            LLVMBuildCondBr(self.builder, cond_value_bool, block_then, block_else);
+            LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_then);
+            LLVMPositionBuilderAtEnd(self.builder, block_then);
+            let eval_branch_true = self.expr_builder.build_expr(arg_branch_true);
+            LLVMBuildBr(self.builder, block_finally);
+            // } else {
+            LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_else);
+            LLVMPositionBuilderAtEnd(self.builder, block_else);
+            let eval_branch_false = self.expr_builder.build_expr(arg_branch_false);
+            LLVMBuildBr(self.builder, block_finally);
+            // }
+            LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_finally);
+            LLVMPositionBuilderAtEnd(self.builder, block_finally);
+        }
+        eval_condition
+    }
+
+    fn build_generic_call(&self, name: &str, args: &[Expr]) -> (LLVMValueRef, LLVMValueRef) {
         for expr in args {
             self.procedure_generic_push_arg(expr);
         }
-        self.procedure_generic_call(name, args.len())
+        unsafe { self.procedure_generic_call(name, args.len()) }
     }
 
-    unsafe fn procedure_generic_push_arg(&self, arg: &Expr) {
+    fn procedure_generic_push_arg(&self, arg: &Expr) {
         let (bind_type, bind_value) = self.expr_builder.build_expr_in_stack(arg);
         self.procedure_push_arg_tuple(bind_type, bind_value);
     }
 
-    unsafe fn procedure_push_arg_tuple(&self, arg_type: LLVMValueRef, arg_value: LLVMValueRef) {
+    fn procedure_push_arg_tuple(&self, arg_type: LLVMValueRef, arg_value: LLVMValueRef) {
         let (fn_ref, fn_argtypes) = self
             .function_factory
             .get("compilisp_procedure_push_arg")
@@ -55,14 +97,14 @@ impl<'a> ProcedureCallBuilder<'a> {
             .unwrap();
 
         let mut args = [self.runtime_ref, arg_type, arg_value];
-        LLVMBuildCall2(
+        unsafe { LLVMBuildCall2(
             self.builder,
             fn_argtypes,
             fn_ref,
             args.as_mut_ptr(),
             args.len() as c_uint,
             EMPTY_STR.as_ptr(),
-        );
+        ) };
     }
 
     unsafe fn procedure_generic_call(&self, name: &str, stack_size: usize) -> (LLVMValueRef, LLVMValueRef) {

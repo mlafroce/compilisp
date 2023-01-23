@@ -12,6 +12,7 @@ type CompilispResult<T> = Result<T, CompilispError>;
 #[derive(Debug)]
 pub enum CompilispValue {
     Number(i32),
+    Boolean(bool),
     String(String),
     Symbol(String),
 }
@@ -30,19 +31,16 @@ impl<'a> CompilispRuntime {
     }
 
     pub fn push_let_context(&mut self) {
-        println!("-> Pushing let context");
         self.scopes.push(HashMap::new());
     }
 
     pub fn push_let_binding(&mut self, bind_name: &str, bind_value: CompilispValue) {
-        println!("-- Binding {bind_name:?} -> {bind_value:?}");
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(bind_name.to_owned(), bind_value);
         }
     }
 
     pub fn pop_let_context(&mut self) {
-        println!("<- Pop let context");
         self.scopes.pop();
     }
 
@@ -60,10 +58,16 @@ impl<'a> CompilispRuntime {
                 let result = compilisp_sum(resolved_args.as_slice());
                 result
             }
+            "<" => {
+                let resolved_args = self.resolve(&args)?;
+                let result = compilisp_le(resolved_args.as_slice());
+                result
+            }
             "display" => {
                 for value in &args {
                     match value {
                         CompilispValue::Number(num) => print!("{num}"),
+                        CompilispValue::Boolean(num) => print!("{num}"),
                         CompilispValue::String(value) => print!("{value}"),
                         CompilispValue::Symbol(_) => {
                             if let Ok(value) = self.resolve_symbol(value) {
@@ -107,6 +111,16 @@ impl<'a> CompilispRuntime {
     }
 }
 
+fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
+    let lhs = args[0];
+    let rhs = args[1];
+    match (lhs, rhs) {
+        (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
+            Ok(CompilispValue::Boolean(lhs < rhs))
+        }
+        _ => Err(CompilispError::ArgTypeMismatch)
+    }
+}
 fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
     let mut result = 0;
     for arg in args {
@@ -170,6 +184,10 @@ pub unsafe extern "C" fn compilisp_procedure_call(
                 *result_type = 0;
                 *result_value = value;
             }
+            CompilispValue::Boolean(value) => {
+                *result_type = 1;
+                *result_value = if value { 1 } else { 0 };
+            }
             _ => panic!("Only number operations supported"),
         }
          0
@@ -224,18 +242,26 @@ pub unsafe extern "C" fn compilisp_push_arg(_self: *mut CompilispRuntime) {
 }
 
 unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispValue {
-    if bind_type == 0 {
-        let value = *(bind_value as *const i32);
-        CompilispValue::Number(value)
-    } else if bind_type == 1 {
-        let value = CStr::from_ptr(bind_value as *const c_char)
+    match bind_type {
+        0 => {
+            let value = *(bind_value as *const i32);
+            CompilispValue::Number(value)
+        }
+        1 => {
+            let value = *(bind_value as *const i32);
+            CompilispValue::Boolean(value != 0)
+        }
+        2 => {
+            let value = CStr::from_ptr(bind_value as *const c_char)
+                .to_str()
+                .unwrap();
+            CompilispValue::String(value.to_owned())
+        }
+        _ => {
+            let value = CStr::from_ptr(bind_value as *const c_char)
             .to_str()
             .unwrap();
-        CompilispValue::String(value.to_owned())
-    } else {
-        let value = CStr::from_ptr(bind_value as *const c_char)
-            .to_str()
-            .unwrap();
-        CompilispValue::Symbol(value.to_owned())
+            CompilispValue::Symbol(value.to_owned())
+        }
     }
 }

@@ -15,6 +15,9 @@ pub struct RuntimeCompiler {
 
 lazy_static! {
     pub static ref EMPTY_STR: CString = CString::new("").unwrap();
+    pub static ref THEN_STR: CString = CString::new("then").unwrap();
+    pub static ref ELSE_STR: CString = CString::new("else").unwrap();
+    pub static ref FINALLY_STR: CString = CString::new("finally").unwrap();
 }
 
 impl RuntimeCompiler {

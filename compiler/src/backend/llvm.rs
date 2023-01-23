@@ -44,7 +44,7 @@ impl Context {
 
             runtime.destroy(builder);
 
-            LLVMPositionBuilderAtEnd(builder, main_block);
+            //LLVMPositionBuilderAtEnd(builder, main_block);
             let ret_value = LLVMConstInt(
                 LLVMInt32TypeInContext(self.context),
                 0,
