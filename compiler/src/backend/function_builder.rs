@@ -33,6 +33,9 @@ impl FunctionBuilder {
         self
     }
 
+    /// Creates a new function declaration based on current configuration
+    /// # Safety
+    /// Any LLVM function is unsafe to use. `module` must be a valid module.
     pub unsafe fn build(mut self, module: LLVMModuleRef) -> (LLVMValueRef, LLVMTypeRef) {
         let context = LLVMGetModuleContext(module);
         let ret_type = self.ret_type.unwrap_or(LLVMVoidTypeInContext(context));

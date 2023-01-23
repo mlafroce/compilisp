@@ -49,7 +49,11 @@ impl<'a> CompilispRuntime {
         self.args.push(arg);
     }
 
-    pub fn procedure_call(&mut self, procedure_name: &str, stack_size: u8) -> CompilispResult<CompilispValue> {
+    pub fn procedure_call(
+        &mut self,
+        procedure_name: &str,
+        stack_size: u8,
+    ) -> CompilispResult<CompilispValue> {
         println!("-- procedure call: {procedure_name:?}");
         let args = self.pop_args(stack_size);
         match procedure_name {
@@ -75,16 +79,14 @@ impl<'a> CompilispRuntime {
                             } else {
                                 print!("Nil");
                             }
-                        },
+                        }
                     }
                     print!(" ");
                 }
                 // TODO: void return
                 Ok(CompilispValue::Number(0))
             }
-            _ => {
-                Err(CompilispError::UnboundVariable(procedure_name.to_string()))
-            }
+            _ => Err(CompilispError::UnboundVariable(procedure_name.to_string())),
         }
     }
 
@@ -94,8 +96,7 @@ impl<'a> CompilispRuntime {
     }
 
     fn resolve(&'a self, args: &'a [CompilispValue]) -> CompilispResult<Vec<&CompilispValue>> {
-        args
-            .iter()
+        args.iter()
             .map(|value| self.resolve_symbol(value))
             .collect()
     }
@@ -118,7 +119,7 @@ fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
         (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
             Ok(CompilispValue::Boolean(lhs < rhs))
         }
-        _ => Err(CompilispError::ArgTypeMismatch)
+        _ => Err(CompilispError::ArgTypeMismatch),
     }
 }
 fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
@@ -190,7 +191,7 @@ pub unsafe extern "C" fn compilisp_procedure_call(
             }
             _ => panic!("Only number operations supported"),
         }
-         0
+        0
     } else {
         match result {
             Err(CompilispError::UnboundVariable(_)) => 1,
@@ -259,8 +260,8 @@ unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispV
         }
         _ => {
             let value = CStr::from_ptr(bind_value as *const c_char)
-            .to_str()
-            .unwrap();
+                .to_str()
+                .unwrap();
             CompilispValue::Symbol(value.to_owned())
         }
     }

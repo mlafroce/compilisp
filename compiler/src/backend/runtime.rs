@@ -1,11 +1,11 @@
 use crate::ast::Expr;
+use crate::backend::expr_builder::ExprBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use lazy_static::lazy_static;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
 use std::ptr::null_mut;
-use crate::backend::expr_builder::ExprBuilder;
 
 /// Compiles scheme code using compilisp runtime calls
 pub struct RuntimeCompiler {
@@ -61,8 +61,7 @@ impl RuntimeCompiler {
         builder: LLVMBuilderRef,
         expression: &Expr,
     ) -> (LLVMValueRef, LLVMValueRef) {
-        let builder = ExprBuilder::new(module, builder,self.runtime_ref, &self.function_factory);
+        let builder = ExprBuilder::new(module, builder, self.runtime_ref, &self.function_factory);
         builder.build_expr(expression)
     }
-
 }

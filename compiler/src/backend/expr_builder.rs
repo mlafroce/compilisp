@@ -1,31 +1,38 @@
-use std::ffi::{c_uint, c_ulonglong, CString};
-use llvm_sys::core::*;
-use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMModuleRef, LLVMValueRef};
 use crate::ast::Expr;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::EMPTY_STR;
+use crate::backend::value_builder::Value::{ConstInt, GlobalString};
+use crate::backend::value_builder::{Value, ValueBuilder};
+use llvm_sys::core::*;
+use llvm_sys::prelude::{LLVMBuilderRef, LLVMContextRef, LLVMModuleRef, LLVMValueRef};
+use std::ffi::{c_uint, c_ulonglong, CString};
 
-pub const NUMBER_DISCRIMINATOR: c_ulonglong = 0;
+pub const NUMBER_DISCRIMINATOR: i32 = 0;
 pub const BOOLEAN_DISCRIMINATOR: c_ulonglong = 1;
-pub const STR_DISCRIMINATOR: c_ulonglong = 2;
-pub const SYMBOL_DISCRIMINATOR: c_ulonglong = 3;
-
+pub const STR_DISCRIMINATOR: i32 = 2;
+pub const SYMBOL_DISCRIMINATOR: i32 = 3;
 
 pub struct ExprBuilder<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     runtime_ref: LLVMValueRef,
-    function_factory: &'a FunctionFactory
+    function_factory: &'a FunctionFactory,
 }
 
 impl<'a> ExprBuilder<'a> {
-    pub(crate) fn new(module: LLVMModuleRef,
-                      builder: LLVMBuilderRef,
-                      runtime_ref: LLVMValueRef,
-                      function_factory: &'a FunctionFactory
+    pub(crate) fn new(
+        module: LLVMModuleRef,
+        builder: LLVMBuilderRef,
+        runtime_ref: LLVMValueRef,
+        function_factory: &'a FunctionFactory,
     ) -> Self {
-        Self {module, builder, runtime_ref, function_factory}
+        Self {
+            module,
+            builder,
+            runtime_ref,
+            function_factory,
+        }
     }
 
     pub fn build_expr(&self, expression: &Expr) -> (LLVMValueRef, LLVMValueRef) {
@@ -39,7 +46,7 @@ impl<'a> ExprBuilder<'a> {
                     self.function_factory,
                     self.module,
                     self.builder,
-                    self
+                    self,
                 );
                 call_builder.process_procedure(name, args)
             }
@@ -78,23 +85,18 @@ impl<'a> ExprBuilder<'a> {
         self.build_expr(expression)
     }
 
-    fn bind_let_value(
-        &self,
-        binding_name: &str,
-        binding_expr: &Expr,
-    ) {
+    fn bind_let_value(&self, binding_name: &str, binding_expr: &Expr) {
         let (fn_ref, fn_argtypes) = self
             .function_factory
             .get("compilisp_push_let_binding")
             .copied()
             .unwrap();
         let c_binding_name = CString::new(binding_name).unwrap();
-        let name_value =
-            unsafe { LLVMBuildGlobalStringPtr(self.builder, c_binding_name.as_ptr(), EMPTY_STR.as_ptr()) };
+        let name_value = unsafe {
+            LLVMBuildGlobalStringPtr(self.builder, c_binding_name.as_ptr(), EMPTY_STR.as_ptr())
+        };
 
-        let (bind_type, bind_value) = self.build_expr_in_stack(
-            binding_expr,
-        );
+        let (bind_type, bind_value) = self.build_expr_in_stack(binding_expr);
         let mut args = [self.runtime_ref, name_value, bind_type, bind_value];
         unsafe {
             LLVMBuildCall2(
@@ -109,111 +111,101 @@ impl<'a> ExprBuilder<'a> {
     }
 
     /// Returns a tuple with (expr_type, expr_value) pointers
-    pub fn build_expr_in_stack(
-        &self,
-        expr: &Expr,
-    ) -> (LLVMValueRef, LLVMValueRef) {
-        unsafe {
-            let context = LLVMGetModuleContext(self.module);
-            match expr {
-                Expr::Number(num) => build_number_in_stack(context, self.builder, *num),
-                Expr::Boolean(value) => build_boolean_in_stack(context, self.builder, *value),
-                Expr::Symbol(name) => build_symbol_in_stack(context, self.builder, name.as_str()),
-                Expr::String(value) => build_str_in_stack(context, self.builder, value.as_str()),
-                Expr::Procedure(proc_name, args) => {
-                    let call_builder =
-                        ProcedureCallBuilder::new(self.runtime_ref, self.function_factory, self.module, self.builder, self);
-                    let (result_type_ptr, result_value) = call_builder.process_procedure(proc_name, args);
-                    // Push result to function args
-                    let context = LLVMGetModuleContext(self.module);
-                    let result_type_type = LLVMInt8TypeInContext(context);
-                    let result_type = LLVMBuildLoad2(
+    pub fn build_expr_in_stack(&self, expr: &Expr) -> (LLVMValueRef, LLVMValueRef) {
+        let context = unsafe { LLVMGetModuleContext(self.module) };
+        match expr {
+            Expr::Number(num) => build_number_in_stack(context, self.builder, *num),
+            Expr::Boolean(value) => build_boolean_in_stack(context, self.builder, *value),
+            Expr::Symbol(name) => build_symbol_in_stack(context, self.builder, name.as_str()),
+            Expr::String(value) => build_str_in_stack(context, self.builder, value.as_str()),
+            Expr::Procedure(proc_name, args) => {
+                let call_builder = ProcedureCallBuilder::new(
+                    self.runtime_ref,
+                    self.function_factory,
+                    self.module,
+                    self.builder,
+                    self,
+                );
+                let (result_type_ptr, result_value) =
+                    call_builder.process_procedure(proc_name, args);
+
+                let result_type_type = unsafe { LLVMInt8TypeInContext(context) };
+                let result_type = unsafe {
+                    LLVMBuildLoad2(
                         self.builder,
                         result_type_type,
                         result_type_ptr,
                         EMPTY_STR.as_ptr(),
-                    );
-                    (result_type, result_value)
-                }
-                _ => unimplemented!(),
+                    )
+                };
+                (result_type, result_value)
             }
+            _ => unimplemented!(),
         }
     }
 }
 
-unsafe fn build_symbol_in_stack(
+fn build_symbol_in_stack(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
-    name: &str,
+    sym_name: &str,
 ) -> (LLVMValueRef, LLVMValueRef) {
-    let c_name = CString::new(name).unwrap();
-    let c_name_var = CString::new("symbol_name").unwrap();
-    let name_ptr = LLVMBuildGlobalStringPtr(builder, c_name.as_ptr(), c_name_var.as_ptr());
+    let symbol = GlobalString {
+        name: "symbol_name",
+        value: sym_name,
+    };
+    let symbol_ptr = unsafe { ValueBuilder::build_value(context, builder, &symbol) };
 
-    let bind_type_type = LLVMInt8TypeInContext(context);
-    // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, SYMBOL_DISCRIMINATOR, LLVMBool::from(false));
-    (value_discriminator, name_ptr)
+    let discriminator = ConstInt(SYMBOL_DISCRIMINATOR);
+    let value_discriminator =
+        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+    (value_discriminator, symbol_ptr)
 }
 
-unsafe fn build_str_in_stack(
+fn build_str_in_stack(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
-    name: &str,
+    value: &str,
 ) -> (LLVMValueRef, LLVMValueRef) {
-    let c_name = CString::new(name).unwrap();
-    let c_name_var = CString::new("str").unwrap();
-    let name_ptr = LLVMBuildGlobalStringPtr(builder, c_name.as_ptr(), c_name_var.as_ptr());
+    let symbol = GlobalString {
+        name: "static_str",
+        value,
+    };
+    let str_ptr = unsafe { ValueBuilder::build_value(context, builder, &symbol) };
 
-    let bind_type_type = LLVMInt8TypeInContext(context);
-    // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, STR_DISCRIMINATOR, LLVMBool::from(false));
-    (value_discriminator, name_ptr)
+    let discriminator = ConstInt(STR_DISCRIMINATOR);
+    let value_discriminator =
+        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+    (value_discriminator, str_ptr)
 }
 
-unsafe fn build_number_in_stack(
+fn build_number_in_stack(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
     num: i32,
 ) -> (LLVMValueRef, LLVMValueRef) {
-    let name = CString::new("value").unwrap();
-    let bind_value_type = LLVMInt32TypeInContext(context);
-    // Create stack space for i32
-    let alloca = LLVMBuildAlloca(builder, bind_value_type, name.as_ptr());
-    // Create constant `num`
-    let bind_value = LLVMConstInt(bind_value_type, num as c_ulonglong, LLVMBool::from(false));
-    // Save constant in stack
-    LLVMBuildStore(builder, bind_value, alloca);
-    let bind_value_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-    // Cast stack address to *i8 (reuse previous i8 type)
-    let i8_alloca = LLVMBuildPointerCast(builder, alloca, bind_value_type, EMPTY_STR.as_ptr());
+    let value = Value::VarInt32("value", Some(num));
+    let value_ptr = unsafe { ValueBuilder::build_value(context, builder, &value) };
+    let value_opaque = unsafe { ValueBuilder::cast_opaque(context, builder, &value_ptr) };
 
-    let bind_type_type = LLVMInt8TypeInContext(context);
-    // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, NUMBER_DISCRIMINATOR, LLVMBool::from(false));
-    (value_discriminator, i8_alloca)
+    let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
+    let value_discriminator =
+        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+
+    (value_discriminator, value_opaque)
 }
-
-unsafe fn build_boolean_in_stack(
+fn build_boolean_in_stack(
     context: LLVMContextRef,
     builder: LLVMBuilderRef,
     value: bool,
 ) -> (LLVMValueRef, LLVMValueRef) {
-    let name = CString::new("value").unwrap();
-    let num = if value { 1 } else { 0 };
-    let bind_value_type = LLVMInt32TypeInContext(context);
-    // Create stack space for i32
-    let alloca = LLVMBuildAlloca(builder, bind_value_type, name.as_ptr());
-    // Create constant `num`
-    let bind_value = LLVMConstInt(bind_value_type, num as c_ulonglong, LLVMBool::from(false));
-    // Save constant in stack
-    LLVMBuildStore(builder, bind_value, alloca);
-    let bind_value_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-    // Cast stack address to *i8 (reuse previous i8 type)
-    let i8_alloca = LLVMBuildPointerCast(builder, alloca, bind_value_type, EMPTY_STR.as_ptr());
+    let value = Value::VarBool("value", Some(value));
+    let value_ptr = unsafe { ValueBuilder::build_value(context, builder, &value) };
+    let value_opaque = unsafe { ValueBuilder::cast_opaque(context, builder, &value_ptr) };
 
-    let bind_type_type = LLVMInt8TypeInContext(context);
-    // Expr::Number identifier is 0
-    let value_discriminator = LLVMConstInt(bind_type_type, NUMBER_DISCRIMINATOR, LLVMBool::from(false));
-    (value_discriminator, i8_alloca)
+    let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
+    let value_discriminator =
+        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+
+    (value_discriminator, value_opaque)
 }
