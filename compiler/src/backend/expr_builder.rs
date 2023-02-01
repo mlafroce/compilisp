@@ -48,7 +48,7 @@ impl<'a> ExprBuilder<'a> {
                     self.builder,
                     self,
                 );
-                call_builder.process_procedure(name, args)
+                call_builder.process_procedure(name, args).unwrap()
             }
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expression)
@@ -127,7 +127,7 @@ impl<'a> ExprBuilder<'a> {
                     self,
                 );
                 let (result_type_ptr, result_value) =
-                    call_builder.process_procedure(proc_name, args);
+                    call_builder.process_procedure(proc_name, args).unwrap();
 
                 let result_type_type = unsafe { LLVMInt8TypeInContext(context) };
                 let result_type = unsafe {

@@ -5,6 +5,7 @@ use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::{c_uint, c_ulonglong, CString};
+use crate::backend::error::CompilispResult;
 
 pub struct ProcedureCallBuilder<'a> {
     runtime_ref: LLVMValueRef,
@@ -31,14 +32,14 @@ impl<'a> ProcedureCallBuilder<'a> {
         }
     }
     /// Returns a tuple with result expr value ref
-    pub fn process_procedure(&self, name: &str, args: &[Expr]) -> (LLVMValueRef, LLVMValueRef) {
+    pub fn process_procedure(&self, name: &str, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         match name {
             "if" => self.build_if_call(args),
             _ => self.build_generic_call(name, args),
         }
     }
 
-    fn build_if_call(&self, args: &[Expr]) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_if_call(&self, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         // TODO: Check args
         let context = unsafe { LLVMGetModuleContext(self.module) };
         let arg_condition = args.get(0).unwrap();
@@ -85,14 +86,14 @@ impl<'a> ProcedureCallBuilder<'a> {
             LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_finally);
             LLVMPositionBuilderAtEnd(self.builder, block_finally);
         }
-        eval_condition
+        Ok(eval_condition)
     }
 
-    fn build_generic_call(&self, name: &str, args: &[Expr]) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_generic_call(&self, name: &str, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         for expr in args {
             self.procedure_generic_push_arg(expr);
         }
-        unsafe { self.procedure_generic_call(name, args.len()) }
+        unsafe { Ok(self.procedure_generic_call(name, args.len())) }
     }
 
     fn procedure_generic_push_arg(&self, arg: &Expr) {

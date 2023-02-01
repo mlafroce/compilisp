@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
+use std::io;
+use std::io::Write;
 
 #[derive(Debug)]
 pub enum CompilispError {
@@ -45,7 +47,6 @@ impl<'a> CompilispRuntime {
     }
 
     pub fn procedure_push_arg(&mut self, arg: CompilispValue) {
-        println!("-> Push process arg: {arg:?}");
         self.args.push(arg);
     }
 
@@ -54,7 +55,6 @@ impl<'a> CompilispRuntime {
         procedure_name: &str,
         stack_size: u8,
     ) -> CompilispResult<CompilispValue> {
-        println!("-- procedure call: {procedure_name:?}");
         let args = self.pop_args(stack_size);
         match procedure_name {
             "+" => {
@@ -81,7 +81,7 @@ impl<'a> CompilispRuntime {
                             }
                         }
                     }
-                    print!(" ");
+                    print!("");
                 }
                 // TODO: void return
                 Ok(CompilispValue::Number(0))
@@ -113,15 +113,20 @@ impl<'a> CompilispRuntime {
 }
 
 fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
-    let lhs = args[0];
-    let rhs = args[1];
-    match (lhs, rhs) {
-        (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
-            Ok(CompilispValue::Boolean(lhs < rhs))
+
+    for slice in args.windows(2) {
+        match (slice[0], slice[1]) {
+            (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
+                if lhs >= rhs {
+                    return Ok(CompilispValue::Boolean(false))
+                }
+            }
+            _ => return Err(CompilispError::ArgTypeMismatch),
         }
-        _ => Err(CompilispError::ArgTypeMismatch),
     }
+    Ok(CompilispValue::Boolean(true))
 }
+
 fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
     let mut result = 0;
     for arg in args {
@@ -139,7 +144,6 @@ fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
 
 #[no_mangle]
 pub extern "C" fn compilisp_init() -> *mut CompilispRuntime {
-    println!("Compilisp init called");
     let b = Box::new(CompilispRuntime::new());
     Box::into_raw(b)
 }
@@ -148,7 +152,7 @@ pub extern "C" fn compilisp_init() -> *mut CompilispRuntime {
 /// _self must be a valid pointer to a compilisp runtime
 #[no_mangle]
 pub unsafe extern "C" fn compilisp_destroy(_self: *mut CompilispRuntime) {
-    println!("Compilisp destroy called");
+    io::stdout().flush().ok();
     drop(Box::from_raw(_self));
 }
 
@@ -178,7 +182,6 @@ pub unsafe extern "C" fn compilisp_procedure_call(
     let mut _self = &mut *_self;
     let c_procedure_name = CStr::from_ptr(procedure_name);
     let result = _self.procedure_call(c_procedure_name.to_str().unwrap(), stack_size);
-    println!("Should return {result:?}");
     if let Ok(value) = result {
         match value {
             CompilispValue::Number(value) => {

@@ -27,7 +27,8 @@ impl ValueBuilder {
     ) -> LLVMValueRef {
         match value {
             Value::GlobalString { name, value } => {
-                let c_value = CString::new(*value).unwrap();
+                let escaped_value = value.replace("\\n", "\n");
+                let c_value = CString::new(escaped_value).unwrap();
                 let c_name = CString::new(*name).unwrap();
                 unsafe { LLVMBuildGlobalStringPtr(builder, c_value.as_ptr(), c_name.as_ptr()) }
             }

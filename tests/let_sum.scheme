@@ -1,5 +1,6 @@
 (let ((x 2))
-  (display
-    "(x + 3) =" (+ 3 x)
+  (begin
+    (display "(x + 3) = ")
+    (display  (+ 3 x))
   )
 )
