@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::backend::runtime::EMPTY_STR;
 use llvm_sys::core::{
     LLVMBuildAlloca, LLVMBuildGlobalStringPtr, LLVMBuildPointerCast, LLVMBuildStore, LLVMConstInt,
@@ -6,7 +7,10 @@ use llvm_sys::core::{
 use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMValueRef};
 use std::ffi::{c_ulonglong, CString};
 
-pub struct ValueBuilder;
+#[derive(Default)]
+pub struct ValueBuilder {
+    global_strings: HashMap<String, LLVMValueRef>
+}
 
 pub enum Value<'a> {
     GlobalString { name: &'a str, value: &'a str },
@@ -21,6 +25,7 @@ impl ValueBuilder {
     /// # Safety
     /// Any LLVM function is unsafe. Context and builder must be valid.
     pub unsafe fn build_value(
+        &mut self,
         context: LLVMContextRef,
         builder: LLVMBuilderRef,
         value: &Value,
@@ -28,9 +33,7 @@ impl ValueBuilder {
         match value {
             Value::GlobalString { name, value } => {
                 let escaped_value = value.replace("\\n", "\n");
-                let c_value = CString::new(escaped_value).unwrap();
-                let c_name = CString::new(*name).unwrap();
-                unsafe { LLVMBuildGlobalStringPtr(builder, c_value.as_ptr(), c_name.as_ptr()) }
+                self.get_or_create_global_str(builder, &escaped_value, name)
             }
             Value::ConstInt(value) => {
                 let bind_type_type = unsafe { LLVMInt8TypeInContext(context) };
@@ -79,5 +82,17 @@ impl ValueBuilder {
         let cast_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
         // Cast stack address to *i8 (reuse previous i8 type)
         LLVMBuildPointerCast(builder, *value_ref, cast_type, EMPTY_STR.as_ptr())
+    }
+
+    pub fn get_or_create_global_str(&mut self, builder: LLVMBuilderRef, value: &str, name: &str) -> LLVMValueRef {
+        if let Some(value_ref) = self.global_strings.get(value) {
+            *value_ref
+        } else {
+            let c_value = CString::new(value).unwrap();
+            let c_name = CString::new(name).unwrap();
+            let value_ref = unsafe { LLVMBuildGlobalStringPtr(builder, c_value.as_ptr(), c_name.as_ptr()) };
+            self.global_strings.insert(value.to_owned(), value_ref);
+            value_ref
+        }
     }
 }

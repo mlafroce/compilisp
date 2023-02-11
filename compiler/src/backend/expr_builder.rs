@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::ast::Expr;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
@@ -5,7 +6,7 @@ use crate::backend::runtime::EMPTY_STR;
 use crate::backend::value_builder::Value::{ConstInt, GlobalString};
 use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
-use llvm_sys::prelude::{LLVMBuilderRef, LLVMContextRef, LLVMModuleRef, LLVMValueRef};
+use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use std::ffi::{c_uint, c_ulonglong, CString};
 
 pub const NUMBER_DISCRIMINATOR: i32 = 0;
@@ -17,6 +18,7 @@ pub struct ExprBuilder<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     runtime_ref: LLVMValueRef,
+    value_builder: RefCell<ValueBuilder>,
     function_factory: &'a FunctionFactory,
 }
 
@@ -27,12 +29,20 @@ impl<'a> ExprBuilder<'a> {
         runtime_ref: LLVMValueRef,
         function_factory: &'a FunctionFactory,
     ) -> Self {
+        let value_builder = RefCell::new(ValueBuilder::default());
         Self {
             module,
             builder,
             runtime_ref,
+            value_builder,
             function_factory,
         }
+    }
+
+    pub fn build_value(&self, value: &Value) -> LLVMValueRef {
+        let context = unsafe { LLVMGetModuleContext(self.module) };
+        let mut value_builder = self.value_builder.borrow_mut();
+        unsafe { value_builder.build_value(context, self.builder, value) }
     }
 
     pub fn build_expr(&self, expression: &Expr) -> (LLVMValueRef, LLVMValueRef) {
@@ -114,10 +124,10 @@ impl<'a> ExprBuilder<'a> {
     pub fn build_expr_in_stack(&self, expr: &Expr) -> (LLVMValueRef, LLVMValueRef) {
         let context = unsafe { LLVMGetModuleContext(self.module) };
         match expr {
-            Expr::Number(num) => build_number_in_stack(context, self.builder, *num),
-            Expr::Boolean(value) => build_boolean_in_stack(context, self.builder, *value),
-            Expr::Symbol(name) => build_symbol_in_stack(context, self.builder, name.as_str()),
-            Expr::String(value) => build_str_in_stack(context, self.builder, value.as_str()),
+            Expr::Number(num) => self.build_number_in_stack(*num),
+            Expr::Boolean(value) => self.build_boolean_in_stack(*value),
+            Expr::Symbol(name) => self.build_symbol_in_stack(name.as_str()),
+            Expr::String(value) => self.build_str_in_stack(value.as_str()),
             Expr::Procedure(proc_name, args) => {
                 let call_builder = ProcedureCallBuilder::new(
                     self.runtime_ref,
@@ -143,69 +153,65 @@ impl<'a> ExprBuilder<'a> {
             _ => unimplemented!(),
         }
     }
-}
 
-fn build_symbol_in_stack(
-    context: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    sym_name: &str,
-) -> (LLVMValueRef, LLVMValueRef) {
-    let symbol = GlobalString {
-        name: "symbol_name",
-        value: sym_name,
-    };
-    let symbol_ptr = unsafe { ValueBuilder::build_value(context, builder, &symbol) };
+    fn build_str_in_stack(
+        &self,
+        value: &str,
+    ) -> (LLVMValueRef, LLVMValueRef) {
+        let symbol = GlobalString {
+            name: "static_str",
+            value,
+        };
+        let str_ptr = self.build_value(&symbol);
 
-    let discriminator = ConstInt(SYMBOL_DISCRIMINATOR);
-    let value_discriminator =
-        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
-    (value_discriminator, symbol_ptr)
-}
+        let discriminator = ConstInt(STR_DISCRIMINATOR);
+        let value_discriminator = self.build_value(&discriminator);
+        (value_discriminator, str_ptr)
+    }
 
-fn build_str_in_stack(
-    context: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    value: &str,
-) -> (LLVMValueRef, LLVMValueRef) {
-    let symbol = GlobalString {
-        name: "static_str",
-        value,
-    };
-    let str_ptr = unsafe { ValueBuilder::build_value(context, builder, &symbol) };
+    fn build_symbol_in_stack(
+        &self,
+        sym_name: &str,
+    ) -> (LLVMValueRef, LLVMValueRef) {
+        let symbol = GlobalString {
+            name: "symbol_name",
+            value: sym_name,
+        };
+        let symbol_ptr = self.build_value(&symbol);
 
-    let discriminator = ConstInt(STR_DISCRIMINATOR);
-    let value_discriminator =
-        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
-    (value_discriminator, str_ptr)
-}
+        let discriminator = ConstInt(SYMBOL_DISCRIMINATOR);
+        let value_discriminator = self.build_value(&discriminator);
+        (value_discriminator, symbol_ptr)
+    }
 
-fn build_number_in_stack(
-    context: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    num: i32,
-) -> (LLVMValueRef, LLVMValueRef) {
-    let value = Value::VarInt32("value", Some(num));
-    let value_ptr = unsafe { ValueBuilder::build_value(context, builder, &value) };
-    let value_opaque = unsafe { ValueBuilder::cast_opaque(context, builder, &value_ptr) };
+    fn build_number_in_stack(
+        &self,
+        num: i32,
+    ) -> (LLVMValueRef, LLVMValueRef) {
+        let context = unsafe { LLVMGetModuleContext(self.module) };
 
-    let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
-    let value_discriminator =
-        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+        let value = Value::VarInt32("value", Some(num));
+        let value_ptr = self.build_value(&value);
+        let value_opaque = unsafe { ValueBuilder::cast_opaque(context, self.builder, &value_ptr) };
 
-    (value_discriminator, value_opaque)
-}
-fn build_boolean_in_stack(
-    context: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    value: bool,
-) -> (LLVMValueRef, LLVMValueRef) {
-    let value = Value::VarBool("value", Some(value));
-    let value_ptr = unsafe { ValueBuilder::build_value(context, builder, &value) };
-    let value_opaque = unsafe { ValueBuilder::cast_opaque(context, builder, &value_ptr) };
+        let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
+        let value_discriminator = self.build_value(&discriminator);
 
-    let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
-    let value_discriminator =
-        unsafe { ValueBuilder::build_value(context, builder, &discriminator) };
+        (value_discriminator, value_opaque)
+    }
+    fn build_boolean_in_stack(
+        &self,
+        value: bool,
+    ) -> (LLVMValueRef, LLVMValueRef) {
+        let context = unsafe { LLVMGetModuleContext(self.module) };
 
-    (value_discriminator, value_opaque)
+        let value = Value::VarBool("value", Some(value));
+        let value_ptr = self.build_value(&value);
+        let value_opaque = unsafe { ValueBuilder::cast_opaque(context, self.builder, &value_ptr) };
+
+        let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
+        let value_discriminator = self.build_value(&discriminator);
+
+        (value_discriminator, value_opaque)
+    }
 }

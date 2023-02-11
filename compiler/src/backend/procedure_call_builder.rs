@@ -6,6 +6,7 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::{c_uint, c_ulonglong, CString};
 use crate::backend::error::CompilispResult;
+use crate::backend::value_builder::Value;
 
 pub struct ProcedureCallBuilder<'a> {
     runtime_ref: LLVMValueRef,
@@ -132,10 +133,12 @@ impl<'a> ProcedureCallBuilder<'a> {
             .get("compilisp_procedure_call")
             .copied()
             .unwrap();
-        let c_name = CString::new(name).unwrap();
-        let c_name_var = CString::new("procedure_name").unwrap();
+        let procedure_name = Value::GlobalString {
+            value: name,
+            name: "procedure_name"
+        };
         let name_value =
-            LLVMBuildGlobalStringPtr(self.builder, c_name.as_ptr(), c_name_var.as_ptr());
+            self.expr_builder.build_value(&procedure_name);
 
         let bind_type_type = LLVMInt8TypeInContext(context);
         let stack_size_value = LLVMConstInt(
