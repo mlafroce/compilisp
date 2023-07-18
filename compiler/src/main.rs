@@ -2,6 +2,7 @@
 extern crate lalrpop_util;
 
 use clap::Parser;
+use compilisp::ast::ModuleAst;
 use compilisp::backend::llvm::Context;
 use std::fs::File;
 use std::io;
@@ -29,10 +30,12 @@ fn compile(args: CliArgs) -> io::Result<()> {
 
     let parser = lisp::ExpressionParser::new();
     match parser.parse(&module_text) {
-        Ok(root) => {
-            println!("{:?}: {:?}", args.input, root);
+        Ok(root_expr) => {
+            //println!("{:?}: {:?}", args.input, root_expr);
             let compiler = Context::new();
-            compiler.add_module(args.input.as_os_str().to_str().unwrap(), root);
+            let source = args.input.to_string_lossy().to_string();
+            let root = ModuleAst {root: root_expr, source};
+            compiler.add_module(root);
         }
         Err(e) => {
             println!("Failed to compile: {e:?}");

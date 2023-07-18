@@ -1,3 +1,4 @@
+pub mod debuginfo_builder;
 pub mod expr_builder;
 pub mod function_builder;
 pub mod function_factory;

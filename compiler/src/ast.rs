@@ -8,3 +8,9 @@ pub enum Expr {
     Procedure(String, Vec<Expr>),
     LetProcedure(Vec<(String, Expr)>, Box<Expr>),
 }
+
+#[derive(Debug)]
+pub struct ModuleAst {
+	pub source: String,
+	pub root: Expr
+}
