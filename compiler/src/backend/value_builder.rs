@@ -1,15 +1,15 @@
-use std::collections::HashMap;
 use crate::backend::runtime::EMPTY_STR;
 use llvm_sys::core::{
     LLVMBuildAlloca, LLVMBuildGlobalStringPtr, LLVMBuildPointerCast, LLVMBuildStore, LLVMConstInt,
     LLVMInt1TypeInContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext, LLVMPointerType,
 };
 use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMValueRef};
+use std::collections::HashMap;
 use std::ffi::{c_ulonglong, CString};
 
 #[derive(Default)]
 pub struct ValueBuilder {
-    global_strings: HashMap<String, LLVMValueRef>
+    global_strings: HashMap<String, LLVMValueRef>,
 }
 
 pub enum Value<'a> {
@@ -84,13 +84,19 @@ impl ValueBuilder {
         LLVMBuildPointerCast(builder, *value_ref, cast_type, EMPTY_STR.as_ptr())
     }
 
-    pub fn get_or_create_global_str(&mut self, builder: LLVMBuilderRef, value: &str, name: &str) -> LLVMValueRef {
+    pub fn get_or_create_global_str(
+        &mut self,
+        builder: LLVMBuilderRef,
+        value: &str,
+        name: &str,
+    ) -> LLVMValueRef {
         if let Some(value_ref) = self.global_strings.get(value) {
             *value_ref
         } else {
             let c_value = CString::new(value).unwrap();
             let c_name = CString::new(name).unwrap();
-            let value_ref = unsafe { LLVMBuildGlobalStringPtr(builder, c_value.as_ptr(), c_name.as_ptr()) };
+            let value_ref =
+                unsafe { LLVMBuildGlobalStringPtr(builder, c_value.as_ptr(), c_name.as_ptr()) };
             self.global_strings.insert(value.to_owned(), value_ref);
             value_ref
         }

@@ -1,12 +1,12 @@
 use crate::ast::Expr;
+use crate::backend::error::CompilispResult;
 use crate::backend::expr_builder::ExprBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
+use crate::backend::value_builder::Value;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::{c_uint, c_ulonglong, CString};
-use crate::backend::error::CompilispResult;
-use crate::backend::value_builder::Value;
 
 pub struct ProcedureCallBuilder<'a> {
     runtime_ref: LLVMValueRef,
@@ -33,7 +33,11 @@ impl<'a> ProcedureCallBuilder<'a> {
         }
     }
     /// Returns a tuple with result expr value ref
-    pub fn process_procedure(&self, name: &str, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
+    pub fn process_procedure(
+        &self,
+        name: &str,
+        args: &[Expr],
+    ) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         match name {
             "if" => self.build_if_call(args),
             _ => self.build_generic_call(name, args),
@@ -90,7 +94,11 @@ impl<'a> ProcedureCallBuilder<'a> {
         Ok(eval_condition)
     }
 
-    fn build_generic_call(&self, name: &str, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
+    fn build_generic_call(
+        &self,
+        name: &str,
+        args: &[Expr],
+    ) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         for expr in args {
             self.procedure_generic_push_arg(expr);
         }
@@ -135,10 +143,9 @@ impl<'a> ProcedureCallBuilder<'a> {
             .unwrap();
         let procedure_name = Value::GlobalString {
             value: name,
-            name: "procedure_name"
+            name: "procedure_name",
         };
-        let name_value =
-            self.expr_builder.build_value(&procedure_name);
+        let name_value = self.expr_builder.build_value(&procedure_name);
 
         let bind_type_type = LLVMInt8TypeInContext(context);
         let stack_size_value = LLVMConstInt(

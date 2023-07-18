@@ -113,12 +113,11 @@ impl<'a> CompilispRuntime {
 }
 
 fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
-
     for slice in args.windows(2) {
         match (slice[0], slice[1]) {
             (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
                 if lhs >= rhs {
-                    return Ok(CompilispValue::Boolean(false))
+                    return Ok(CompilispValue::Boolean(false));
                 }
             }
             _ => return Err(CompilispError::ArgTypeMismatch),

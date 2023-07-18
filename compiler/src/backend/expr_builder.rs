@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use crate::ast::Expr;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
@@ -7,6 +6,7 @@ use crate::backend::value_builder::Value::{ConstInt, GlobalString};
 use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
 use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
+use std::cell::RefCell;
 use std::ffi::{c_uint, c_ulonglong, CString};
 
 pub const NUMBER_DISCRIMINATOR: i32 = 0;
@@ -154,10 +154,7 @@ impl<'a> ExprBuilder<'a> {
         }
     }
 
-    fn build_str_in_stack(
-        &self,
-        value: &str,
-    ) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_str_in_stack(&self, value: &str) -> (LLVMValueRef, LLVMValueRef) {
         let symbol = GlobalString {
             name: "static_str",
             value,
@@ -169,10 +166,7 @@ impl<'a> ExprBuilder<'a> {
         (value_discriminator, str_ptr)
     }
 
-    fn build_symbol_in_stack(
-        &self,
-        sym_name: &str,
-    ) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_symbol_in_stack(&self, sym_name: &str) -> (LLVMValueRef, LLVMValueRef) {
         let symbol = GlobalString {
             name: "symbol_name",
             value: sym_name,
@@ -184,10 +178,7 @@ impl<'a> ExprBuilder<'a> {
         (value_discriminator, symbol_ptr)
     }
 
-    fn build_number_in_stack(
-        &self,
-        num: i32,
-    ) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_number_in_stack(&self, num: i32) -> (LLVMValueRef, LLVMValueRef) {
         let context = unsafe { LLVMGetModuleContext(self.module) };
 
         let value = Value::VarInt32("value", Some(num));
@@ -199,10 +190,7 @@ impl<'a> ExprBuilder<'a> {
 
         (value_discriminator, value_opaque)
     }
-    fn build_boolean_in_stack(
-        &self,
-        value: bool,
-    ) -> (LLVMValueRef, LLVMValueRef) {
+    fn build_boolean_in_stack(&self, value: bool) -> (LLVMValueRef, LLVMValueRef) {
         let context = unsafe { LLVMGetModuleContext(self.module) };
 
         let value = Value::VarBool("value", Some(value));

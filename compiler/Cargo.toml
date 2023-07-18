@@ -12,5 +12,5 @@ lalrpop = "0.19.8"
 clap = { version = "4.0", features = ["derive"] }
 lalrpop-util = { version = "0.19.8", features = ["lexer"] }
 lazy_static = "1.4.0"
-llvm-sys = "140.0.3"
+llvm-sys = "140.0.5"
 regex = "1"
