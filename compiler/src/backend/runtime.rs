@@ -62,6 +62,6 @@ impl RuntimeCompiler {
         expression: &Expr,
     ) -> (LLVMValueRef, LLVMValueRef) {
         let builder = ExprBuilder::new(module, builder, self.runtime_ref, &self.function_factory);
-        builder.build_expr(expression)
+        builder.build_expr_in_stack(expression)
     }
 }

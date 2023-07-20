@@ -71,6 +71,16 @@ impl<'a> ExprBuilder<'a> {
         bindings: &Vec<(String, Expr)>,
         expression: &Expr,
     ) -> (LLVMValueRef, LLVMValueRef) {
+        self.push_let_context();
+        for (binding_name, binding_expr) in bindings {
+            self.bind_let_value(binding_name, binding_expr);
+        }
+        let ret_expr = self.build_expr_in_stack(expression);
+        self.pop_let_context();
+        ret_expr
+    }
+
+    fn push_let_context(&self) {
         let (fn_ref, fn_argtypes) = self
             .function_factory
             .get("compilisp_push_let_context")
@@ -88,11 +98,26 @@ impl<'a> ExprBuilder<'a> {
                 EMPTY_STR.as_ptr(),
             );
         }
+    }
 
-        for (binding_name, binding_expr) in bindings {
-            self.bind_let_value(binding_name, binding_expr);
+    fn pop_let_context(&self) {
+        let (fn_ref, fn_argtypes) = self
+            .function_factory
+            .get("compilisp_pop_let_context")
+            .copied()
+            .unwrap();
+
+        let mut args = [self.runtime_ref];
+        unsafe {
+            LLVMBuildCall2(
+                self.builder,
+                fn_argtypes,
+                fn_ref,
+                args.as_mut_ptr(),
+                1,
+                EMPTY_STR.as_ptr(),
+            );
         }
-        self.build_expr(expression)
     }
 
     fn bind_let_value(&self, binding_name: &str, binding_expr: &Expr) {
@@ -150,7 +175,10 @@ impl<'a> ExprBuilder<'a> {
                 };
                 (result_type, result_value)
             }
-            _ => unimplemented!(),
+            Expr::LetProcedure(bindings, expr) => self.process_let(bindings, expr),
+            _ => {
+                unimplemented!()
+            }
         }
     }
 

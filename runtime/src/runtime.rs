@@ -103,8 +103,12 @@ impl<'a> CompilispRuntime {
 
     fn resolve_symbol(&'a self, value: &'a CompilispValue) -> CompilispResult<&CompilispValue> {
         if let CompilispValue::Symbol(name) = value {
-            let scope = self.scopes.last().unwrap();
-            let resolved = scope.get(name);
+            let resolved = self
+                .scopes
+                .iter()
+                .rev()
+                .flat_map(|scope| scope.get(name))
+                .next();
             resolved.ok_or(CompilispError::UnboundVariable(name.clone()))
         } else {
             Ok(value)
@@ -231,15 +235,6 @@ pub unsafe extern "C" fn compilisp_push_let_binding(
 /// _self is a valid CompilispRuntime instance
 #[no_mangle]
 pub unsafe extern "C" fn compilisp_pop_let_context(_self: *mut CompilispRuntime) {
-    let mut _self = &mut *_self;
-    _self.pop_let_context();
-}
-
-/// Removes last let binding scope
-/// # Safety
-/// _self is a valid CompilispRuntime instance
-#[no_mangle]
-pub unsafe extern "C" fn compilisp_push_arg(_self: *mut CompilispRuntime) {
     let mut _self = &mut *_self;
     _self.pop_let_context();
 }

@@ -1,4 +1,4 @@
-TESTS=let_sum conditional
+TESTS=let_sum conditional let_nested
 LLVM_FILES=$(patsubst %, %.ll, $(TESTS))
 
 all: $(TESTS)
