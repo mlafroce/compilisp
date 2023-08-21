@@ -1,4 +1,5 @@
 use crate::ast::ModuleAst;
+use crate::backend::compilisp_ir::CompilispIrGenerator;
 use crate::backend::debuginfo_builder::DebugInfoBuilder;
 use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
@@ -35,6 +36,7 @@ impl Context {
             let runtime = RuntimeCompiler::init(builder, function_factory);
 
             println!("Processing {:?}", root.root);
+            let _ = CompilispIrGenerator::new(&root.root);
             runtime.process_expr(module, builder, &root.root);
 
             runtime.destroy(builder);

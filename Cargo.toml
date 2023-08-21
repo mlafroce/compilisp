@@ -4,3 +4,5 @@ members = [
     "compiler",
     "runtime",
 ]
+
+resolver = "2"

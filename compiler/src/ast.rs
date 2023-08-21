@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Number(i32),
     Boolean(bool),

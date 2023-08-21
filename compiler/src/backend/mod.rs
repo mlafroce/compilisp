@@ -1,3 +1,4 @@
+pub mod compilisp_ir;
 pub mod debuginfo_builder;
 pub mod error;
 pub mod expr_builder;
