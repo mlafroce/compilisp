@@ -40,7 +40,7 @@ impl<'a> ProcedureCallBuilder<'a> {
     ) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         match name {
             "if" => self.build_if_call(args),
-            _ => self.build_generic_call(name, args),
+            _ => todo!(), // self.build_generic_call(name, args),
         }
     }
 
@@ -94,23 +94,19 @@ impl<'a> ProcedureCallBuilder<'a> {
         Ok(eval_condition)
     }
 
-    fn build_generic_call(
+    pub fn build_generic_call(
         &self,
         name: &str,
-        args: &[Expr],
+        args: &[(LLVMValueRef, LLVMValueRef)],
+        return_alloc: LLVMValueRef,
     ) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
-        for expr in args {
-            self.procedure_generic_push_arg(expr);
+        for (bind_type, arg) in args {
+            self.procedure_generic_push_arg(*bind_type, *arg);
         }
-        unsafe { Ok(self.procedure_generic_call(name, args.len())) }
+        unsafe { Ok(self.procedure_generic_call(name, args.len(), return_alloc)) }
     }
 
-    fn procedure_generic_push_arg(&self, arg: &Expr) {
-        let (bind_type, bind_value) = self.expr_builder.build_expr_in_stack(arg);
-        self.procedure_push_arg_tuple(bind_type, bind_value);
-    }
-
-    fn procedure_push_arg_tuple(&self, arg_type: LLVMValueRef, arg_value: LLVMValueRef) {
+    fn procedure_generic_push_arg(&self, arg_type: LLVMValueRef, arg_value: LLVMValueRef) {
         let (fn_ref, fn_argtypes) = self
             .function_factory
             .get("compilisp_procedure_push_arg")
@@ -134,6 +130,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         &self,
         name: &str,
         stack_size: usize,
+        result_alloc: LLVMValueRef,
     ) -> (LLVMValueRef, LLVMValueRef) {
         let context = LLVMGetModuleContext(self.module);
         let (fn_ref, fn_argtypes) = self
@@ -141,9 +138,10 @@ impl<'a> ProcedureCallBuilder<'a> {
             .get("compilisp_procedure_call")
             .copied()
             .unwrap();
+        let call_name = "__gen_call_".to_owned() + name;
         let procedure_name = Value::GlobalString {
             value: name,
-            name: "procedure_name",
+            name: call_name.as_str(),
         };
         let name_value = self.expr_builder.build_value(&procedure_name);
 
@@ -155,15 +153,11 @@ impl<'a> ProcedureCallBuilder<'a> {
         );
 
         let result_type_name = CString::new("res_type").unwrap();
-        let result_name = CString::new("result").unwrap();
         let result_type_t = LLVMInt8TypeInContext(context);
         // Create stack space for result type (i8)
         let res_type_alloc =
             LLVMBuildAlloca(self.builder, result_type_t, result_type_name.as_ptr());
         // TODO: enable pointer results
-        let result_t = LLVMInt32TypeInContext(context);
-        // Create stack space for i32
-        let result_alloc = LLVMBuildAlloca(self.builder, result_t, result_name.as_ptr());
         let opaque_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
         let result_alloc_i8 =
             LLVMBuildBitCast(self.builder, result_alloc, opaque_ptr_t, EMPTY_STR.as_ptr());

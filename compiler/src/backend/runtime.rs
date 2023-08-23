@@ -1,4 +1,5 @@
 use crate::ast::Expr;
+use crate::backend::compilisp_ir::CompilispIr;
 use crate::backend::expr_builder::ExprBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use lazy_static::lazy_static;
@@ -53,6 +54,21 @@ impl RuntimeCompiler {
             1,
             EMPTY_STR.as_ptr(),
         );
+    }
+
+    pub unsafe fn process_ir<IRStream>(
+        &self,
+        module: LLVMModuleRef,
+        builder: LLVMBuilderRef,
+        ir_stream: IRStream,
+    ) where
+        IRStream: IntoIterator<Item = CompilispIr>,
+    {
+        let mut builder =
+            ExprBuilder::new(module, builder, self.runtime_ref, &self.function_factory);
+        for inst in ir_stream {
+            builder.build_instruction(inst);
+        }
     }
 
     pub unsafe fn process_expr(

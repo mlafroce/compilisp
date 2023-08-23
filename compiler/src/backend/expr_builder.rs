@@ -1,4 +1,5 @@
 use crate::ast::Expr;
+use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::EMPTY_STR;
@@ -7,6 +8,7 @@ use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
 use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::{c_uint, c_ulonglong, CString};
 
 pub const NUMBER_DISCRIMINATOR: i32 = 0;
@@ -20,6 +22,7 @@ pub struct ExprBuilder<'a> {
     runtime_ref: LLVMValueRef,
     value_builder: RefCell<ValueBuilder>,
     function_factory: &'a FunctionFactory,
+    alloc_map: HashMap<AllocId, LLVMValueRef>,
 }
 
 impl<'a> ExprBuilder<'a> {
@@ -30,12 +33,14 @@ impl<'a> ExprBuilder<'a> {
         function_factory: &'a FunctionFactory,
     ) -> Self {
         let value_builder = RefCell::new(ValueBuilder::default());
+        let alloc_map = HashMap::new();
         Self {
             module,
             builder,
             runtime_ref,
             value_builder,
             function_factory,
+            alloc_map,
         }
     }
 
@@ -142,6 +147,75 @@ impl<'a> ExprBuilder<'a> {
                 args.len() as c_uint,
                 EMPTY_STR.as_ptr(),
             );
+        }
+    }
+
+    pub fn build_instruction(&mut self, inst: CompilispIr) {
+        match inst {
+            CompilispIr::ConstInt { alloc_id, value } => {
+                let builder_value = Value::VarInt32("", Some(value));
+                let alloc = self.build_value(&builder_value);
+                self.alloc_map.insert(alloc_id, alloc);
+            }
+            CompilispIr::GlobalString { alloc_id: _, value } => {
+                let symbol = GlobalString {
+                    name: "symbol_name",
+                    value: value.as_str(),
+                };
+                let _ = self.build_value(&symbol);
+            }
+            CompilispIr::CallProcedure {
+                name,
+                args,
+                return_id,
+            } => {
+                let context = unsafe { LLVMGetModuleContext(self.module) };
+                let call_builder = ProcedureCallBuilder::new(
+                    self.runtime_ref,
+                    self.function_factory,
+                    self.module,
+                    self.builder,
+                    self,
+                );
+                let args_alloc = args
+                    .iter()
+                    .flat_map(|arg_id| self.alloc_map.get(arg_id))
+                    .map(|value| {
+                        let discriminator = ConstInt(NUMBER_DISCRIMINATOR);
+                        let value_discriminator = self.build_value(&discriminator);
+                        (value_discriminator, *value)
+                    })
+                    .map(|(disc, value)| unsafe {
+                        let opaque_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
+                        let casted =
+                            LLVMBuildBitCast(self.builder, value, opaque_ptr_t, EMPTY_STR.as_ptr());
+                        (disc, casted)
+                    })
+                    .collect::<Vec<_>>();
+
+                let return_alloc = self.alloc_map.get(&return_id).copied().unwrap();
+                let (result_type_ptr, _) = call_builder
+                    .build_generic_call(name.as_str(), args_alloc.as_slice(), return_alloc)
+                    .unwrap();
+                let result_type_type = unsafe { LLVMInt8TypeInContext(context) };
+                let _ = unsafe {
+                    LLVMBuildLoad2(
+                        self.builder,
+                        result_type_type,
+                        result_type_ptr,
+                        EMPTY_STR.as_ptr(),
+                    )
+                };
+            }
+            CompilispIr::ProcedureScopeStart => {}
+            CompilispIr::ProcedureScopeEnd => {}
+            // Same as allocVar
+            CompilispIr::ProcedureReturnValue(id) => {
+                let value = Value::VarInt32("", None);
+                let alloc = self.build_value(&value);
+                self.alloc_map.insert(id, alloc);
+            }
+            CompilispIr::PushArg(_) => {}
         }
     }
 

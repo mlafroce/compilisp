@@ -1,10 +1,9 @@
 use crate::ast::Expr;
 
-type AllocId = usize;
+pub type AllocId = usize;
 
 #[derive(Debug)]
 pub enum CompilispIr {
-    AllocVar(AllocId),
     ConstInt {
         alloc_id: AllocId,
         value: i32,
@@ -24,10 +23,10 @@ pub enum CompilispIr {
     PushArg(AllocId),
 }
 
-// Todo: generate ir in a lazy way
+// Todo: generate ir in a lazy way and make buffer private
 #[derive(Debug)]
 pub struct CompilispIrGenerator {
-    ir_buffer: Vec<CompilispIr>,
+    pub ir_buffer: Vec<CompilispIr>,
     alloc_id: usize,
 }
 
@@ -46,7 +45,6 @@ impl CompilispIrGenerator {
         match expr {
             Expr::Number(value) => {
                 self.alloc_id += 1;
-                self.ir_buffer.push(CompilispIr::AllocVar(self.alloc_id));
                 self.ir_buffer.push(CompilispIr::ConstInt {
                     alloc_id: self.alloc_id,
                     value: *value,
@@ -56,7 +54,6 @@ impl CompilispIrGenerator {
 
             Expr::String(value) => {
                 self.alloc_id += 1;
-                self.ir_buffer.push(CompilispIr::AllocVar(self.alloc_id));
                 self.ir_buffer.push(CompilispIr::GlobalString {
                     alloc_id: self.alloc_id,
                     value: value.clone(),
