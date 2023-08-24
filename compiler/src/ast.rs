@@ -12,5 +12,5 @@ pub enum Expr {
 #[derive(Debug)]
 pub struct ModuleAst {
     pub source: String,
-    pub root: Expr,
+    pub expr_vec: Vec<Expr>,
 }

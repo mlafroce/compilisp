@@ -28,14 +28,13 @@ fn compile(args: CliArgs) -> io::Result<()> {
     let mut module_text = String::new();
     module_file.read_to_string(&mut module_text)?;
 
-    let parser = lisp::ExpressionParser::new();
+    let parser = lisp::ModuleParser::new();
     match parser.parse(&module_text) {
-        Ok(root_expr) => {
-            //println!("{:?}: {:?}", args.input, root_expr);
+        Ok(expr_vec) => {
             let compiler = Context::new();
             let source = args.input.to_string_lossy().to_string();
             let root = ModuleAst {
-                root: root_expr,
+                expr_vec,
                 source,
             };
             compiler.add_module(root);
