@@ -16,6 +16,7 @@ def build_compiler():
 @pytest.mark.parametrize(
     'testcase',
     [
+        "one_plus_two",
         "begin_01",
         "let_sum",
         "conditional"

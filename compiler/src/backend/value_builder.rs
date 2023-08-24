@@ -11,7 +11,7 @@ use std::ffi::{c_ulonglong, CString};
 pub struct ValueBuilder {
     global_strings: HashMap<String, LLVMValueRef>,
 }
-
+#[derive(Debug)]
 pub enum Value<'a> {
     GlobalString { name: &'a str, value: &'a str },
     ConstInt(i32),

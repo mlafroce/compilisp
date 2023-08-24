@@ -2,6 +2,19 @@ use crate::ast::Expr;
 
 pub type AllocId = usize;
 
+#[derive(Clone, Copy, Debug)]
+pub enum AllocType {
+    Int,
+    String,
+    Bool,
+}
+
+#[derive(Debug)]
+pub struct Alloc {
+    pub alloc_type: AllocType,
+    pub id: AllocId,
+}
+
 #[derive(Debug)]
 pub enum CompilispIr {
     ConstInt {
@@ -15,7 +28,7 @@ pub enum CompilispIr {
     CallProcedure {
         name: String,
         return_id: AllocId,
-        args: Vec<AllocId>,
+        args: Vec<Alloc>,
     },
     ProcedureScopeStart,
     ProcedureScopeEnd,
@@ -41,7 +54,7 @@ impl CompilispIrGenerator {
         ret
     }
 
-    fn process_expr(&mut self, expr: &Expr) -> AllocId {
+    fn process_expr(&mut self, expr: &Expr) -> Alloc {
         match expr {
             Expr::Number(value) => {
                 self.alloc_id += 1;
@@ -49,7 +62,10 @@ impl CompilispIrGenerator {
                     alloc_id: self.alloc_id,
                     value: *value,
                 });
-                self.alloc_id
+                Alloc {
+                    id: self.alloc_id,
+                    alloc_type: AllocType::Int,
+                }
             }
 
             Expr::String(value) => {
@@ -58,7 +74,10 @@ impl CompilispIrGenerator {
                     alloc_id: self.alloc_id,
                     value: value.clone(),
                 });
-                self.alloc_id
+                Alloc {
+                    id: self.alloc_id,
+                    alloc_type: AllocType::String,
+                }
             }
             Expr::Procedure(name, args) => {
                 self.alloc_id += 1;
@@ -78,7 +97,10 @@ impl CompilispIrGenerator {
                     args: call_args,
                 });
                 self.ir_buffer.push(CompilispIr::ProcedureScopeEnd);
-                return_alloc_id
+                Alloc {
+                    id: return_alloc_id,
+                    alloc_type: AllocType::Int,
+                }
             }
             Expr::LetProcedure(symbols, expr) => {
                 for (_symbol_name, sym_expr) in symbols {

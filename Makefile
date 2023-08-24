@@ -3,6 +3,9 @@ LLVM_FILES=$(patsubst %, %.ll, $(TESTS))
 
 all: $(TESTS)
 
+test:
+	pytest tests/execute.py
+
 %.ll: tests/%.scheme 
 	cargo run -- $<
 

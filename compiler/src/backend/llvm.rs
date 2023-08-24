@@ -35,9 +35,7 @@ impl Context {
 
             let runtime = RuntimeCompiler::init(builder, function_factory);
 
-            println!("Processing {:?}", root.root);
             let ir = CompilispIrGenerator::new(&root.root);
-            //runtime.process_expr(module, builder, &root.root);
             runtime.process_ir(module, builder, ir.ir_buffer);
 
             runtime.destroy(builder);

@@ -1,8 +1,7 @@
-use crate::ast::Expr;
 use crate::backend::error::CompilispResult;
 use crate::backend::expr_builder::ExprBuilder;
 use crate::backend::function_factory::FunctionFactory;
-use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
+use crate::backend::runtime::EMPTY_STR;
 use crate::backend::value_builder::Value;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
@@ -32,18 +31,8 @@ impl<'a> ProcedureCallBuilder<'a> {
             expr_builder,
         }
     }
-    /// Returns a tuple with result expr value ref
-    pub fn process_procedure(
-        &self,
-        name: &str,
-        args: &[Expr],
-    ) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
-        match name {
-            "if" => self.build_if_call(args),
-            _ => todo!(), // self.build_generic_call(name, args),
-        }
-    }
-
+    // Returns a tuple with result expr value ref
+    /*
     fn build_if_call(&self, args: &[Expr]) -> CompilispResult<(LLVMValueRef, LLVMValueRef)> {
         // TODO: Check args
         let context = unsafe { LLVMGetModuleContext(self.module) };
@@ -93,7 +82,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         }
         Ok(eval_condition)
     }
-
+    */
     pub fn build_generic_call(
         &self,
         name: &str,

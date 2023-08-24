@@ -1,4 +1,3 @@
-use crate::ast::Expr;
 use crate::backend::compilisp_ir::CompilispIr;
 use crate::backend::expr_builder::ExprBuilder;
 use crate::backend::function_factory::FunctionFactory;
@@ -69,15 +68,5 @@ impl RuntimeCompiler {
         for inst in ir_stream {
             builder.build_instruction(inst);
         }
-    }
-
-    pub unsafe fn process_expr(
-        &self,
-        module: LLVMModuleRef,
-        builder: LLVMBuilderRef,
-        expression: &Expr,
-    ) -> (LLVMValueRef, LLVMValueRef) {
-        let builder = ExprBuilder::new(module, builder, self.runtime_ref, &self.function_factory);
-        builder.build_expr_in_stack(expression)
     }
 }
