@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::ast::Expr;
 
 pub type AllocId = usize;
@@ -9,7 +10,7 @@ pub enum AllocType {
     Bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Alloc {
     pub alloc_type: AllocType,
     pub id: AllocId,
@@ -40,15 +41,18 @@ pub enum CompilispIr {
 #[derive(Debug)]
 pub struct CompilispIrGenerator {
     pub ir_buffer: Vec<CompilispIr>,
+    symbol_map: HashMap<String, Alloc>, // TODO: add scopes support
     alloc_id: usize,
 }
 
 impl CompilispIrGenerator {
     pub fn new(root: &Expr) -> Self {
         let ir_buffer = vec![];
+        let symbol_map = HashMap::new();
         let mut ret = Self {
             ir_buffer,
             alloc_id: 0,
+            symbol_map,
         };
         ret.process_expr(root);
         ret
@@ -103,10 +107,14 @@ impl CompilispIrGenerator {
                 }
             }
             Expr::LetProcedure(symbols, expr) => {
-                for (_symbol_name, sym_expr) in symbols {
-                    let _ = self.process_expr(sym_expr);
+                for (symbol_name, sym_expr) in symbols {
+                    let alloc = self.process_expr(sym_expr);
+                    self.symbol_map.insert(symbol_name.clone(), alloc);
                 }
                 self.process_expr(expr)
+            }
+            Expr::Symbol(name) => {
+                self.symbol_map.get(name).expect("Symbol doesn't exist").clone()
             }
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expr)
