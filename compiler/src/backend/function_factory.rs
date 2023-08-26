@@ -32,27 +32,6 @@ impl FunctionFactory {
         function_map.insert("compilisp_destroy".to_owned(), cur_fn);
 
         let fn_builder = FunctionBuilder::new()
-            .with_name("compilisp_push_let_context")
-            .add_arg(opaque_pointer);
-        let cur_fn = fn_builder.build(module);
-        function_map.insert("compilisp_push_let_context".to_owned(), cur_fn);
-
-        let fn_builder = FunctionBuilder::new()
-            .with_name("compilisp_pop_let_context")
-            .add_arg(opaque_pointer);
-        let cur_fn = fn_builder.build(module);
-        function_map.insert("compilisp_pop_let_context".to_owned(), cur_fn);
-
-        let fn_builder = FunctionBuilder::new()
-            .with_name("compilisp_push_let_binding")
-            .add_arg(opaque_pointer) // context
-            .add_arg(opaque_pointer) // name
-            .add_arg(char_type) // expr type
-            .add_arg(opaque_pointer); // expr value
-        let cur_fn = fn_builder.build(module);
-        function_map.insert("compilisp_push_let_binding".to_owned(), cur_fn);
-
-        let fn_builder = FunctionBuilder::new()
             .with_name("compilisp_procedure_push_arg")
             .add_arg(opaque_pointer) // context
             .add_arg(char_type) // arg type

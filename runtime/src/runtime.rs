@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
 use std::io;
 use std::io::Write;
@@ -21,7 +20,6 @@ pub enum CompilispValue {
 
 #[derive(Default)]
 pub struct CompilispRuntime {
-    scopes: Vec<HashMap<String, CompilispValue>>,
     args: Vec<CompilispValue>,
 }
 
@@ -30,20 +28,6 @@ impl<'a> CompilispRuntime {
         Self {
             ..Default::default()
         }
-    }
-
-    pub fn push_let_context(&mut self) {
-        self.scopes.push(HashMap::new());
-    }
-
-    pub fn push_let_binding(&mut self, bind_name: &str, bind_value: CompilispValue) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(bind_name.to_owned(), bind_value);
-        }
-    }
-
-    pub fn pop_let_context(&mut self) {
-        self.scopes.pop();
     }
 
     pub fn procedure_push_arg(&mut self, arg: CompilispValue) {
@@ -58,13 +42,11 @@ impl<'a> CompilispRuntime {
         let args = self.pop_args(stack_size);
         match procedure_name {
             "+" => {
-                let resolved_args = self.resolve(&args)?;
-                let result = compilisp_sum(resolved_args.as_slice());
+                let result = compilisp_sum(args.as_slice());
                 result
             }
             "<" => {
-                let resolved_args = self.resolve(&args)?;
-                let result = compilisp_le(resolved_args.as_slice());
+                let result = compilisp_le(args.as_slice());
                 result
             }
             "display" => {
@@ -74,11 +56,7 @@ impl<'a> CompilispRuntime {
                         CompilispValue::Boolean(num) => print!("{num}"),
                         CompilispValue::String(value) => print!("{value}"),
                         CompilispValue::Symbol(_) => {
-                            if let Ok(value) = self.resolve_symbol(value) {
-                                print!("{value:?}");
-                            } else {
-                                print!("Nil");
-                            }
+                            panic!("Unexepected value");
                         }
                     }
                     print!("");
@@ -94,31 +72,11 @@ impl<'a> CompilispRuntime {
         let new_len = self.args.len() - stack_size as usize;
         self.args.drain(new_len..).collect::<Vec<_>>()
     }
-
-    fn resolve(&'a self, args: &'a [CompilispValue]) -> CompilispResult<Vec<&CompilispValue>> {
-        args.iter()
-            .map(|value| self.resolve_symbol(value))
-            .collect()
-    }
-
-    fn resolve_symbol(&'a self, value: &'a CompilispValue) -> CompilispResult<&CompilispValue> {
-        if let CompilispValue::Symbol(name) = value {
-            let resolved = self
-                .scopes
-                .iter()
-                .rev()
-                .flat_map(|scope| scope.get(name))
-                .next();
-            resolved.ok_or(CompilispError::UnboundVariable(name.clone()))
-        } else {
-            Ok(value)
-        }
-    }
 }
 
-fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
+fn compilisp_le(args: &[CompilispValue]) -> CompilispResult<CompilispValue> {
     for slice in args.windows(2) {
-        match (slice[0], slice[1]) {
+        match (&slice[0], &slice[1]) {
             (CompilispValue::Number(lhs), CompilispValue::Number(rhs)) => {
                 if lhs >= rhs {
                     return Ok(CompilispValue::Boolean(false));
@@ -130,7 +88,7 @@ fn compilisp_le(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
     Ok(CompilispValue::Boolean(true))
 }
 
-fn compilisp_sum(args: &[&CompilispValue]) -> CompilispResult<CompilispValue> {
+fn compilisp_sum(args: &[CompilispValue]) -> CompilispResult<CompilispValue> {
     let mut result = 0;
     for arg in args {
         match arg {
@@ -205,38 +163,6 @@ pub unsafe extern "C" fn compilisp_procedure_call(
             _ => unreachable!(),
         }
     }
-}
-
-/// # Safety
-/// _self must be a valid pointer to a compilisp runtime
-#[no_mangle]
-pub unsafe extern "C" fn compilisp_push_let_context(_self: *mut CompilispRuntime) {
-    let mut _self = &mut *_self;
-    _self.push_let_context();
-}
-
-/// # Safety
-/// _self must be a valid pointer to a compilisp runtime
-#[no_mangle]
-pub unsafe extern "C" fn compilisp_push_let_binding(
-    _self: *mut CompilispRuntime,
-    bind_name: *const c_char,
-    bind_type: u8,
-    bind_value: *const c_void,
-) {
-    let mut _self = &mut *_self;
-    let bind_name = CStr::from_ptr(bind_name).to_str().unwrap();
-    let bind_value = opaque_to_enum(bind_type, bind_value);
-    _self.push_let_binding(bind_name, bind_value);
-}
-
-/// Pushes a new let binding scope
-/// # Safety
-/// _self is a valid CompilispRuntime instance
-#[no_mangle]
-pub unsafe extern "C" fn compilisp_pop_let_context(_self: *mut CompilispRuntime) {
-    let mut _self = &mut *_self;
-    _self.pop_let_context();
 }
 
 unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispValue {

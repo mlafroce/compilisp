@@ -41,18 +41,18 @@ pub enum CompilispIr {
 #[derive(Debug)]
 pub struct CompilispIrGenerator {
     pub ir_buffer: Vec<CompilispIr>,
-    symbol_map: HashMap<String, Alloc>, // TODO: add scopes support
+    symbol_scopes: Vec<HashMap<String, Alloc>>,
     alloc_id: usize,
 }
 
 impl CompilispIrGenerator {
     pub fn new(root: &Expr) -> Self {
         let ir_buffer = vec![];
-        let symbol_map = HashMap::new();
+        let symbol_scopes = vec![];
         let mut ret = Self {
             ir_buffer,
             alloc_id: 0,
-            symbol_map,
+            symbol_scopes,
         };
         ret.process_expr(root);
         ret
@@ -107,20 +107,44 @@ impl CompilispIrGenerator {
                 }
             }
             Expr::LetProcedure(symbols, expr) => {
+                self.push_let_context();
                 for (symbol_name, sym_expr) in symbols {
                     let alloc = self.process_expr(sym_expr);
-                    self.symbol_map.insert(symbol_name.clone(), alloc);
+                    self.push_let_binding(&symbol_name, alloc);
                 }
-                self.process_expr(expr)
+                let result = self.process_expr(expr);
+                self.pop_let_context();
+                result
             }
             Expr::Symbol(name) => self
-                .symbol_map
-                .get(name)
+                .resolve_symbol(name)
                 .expect("Symbol doesn't exist")
                 .clone(),
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expr)
             }
         }
+    }
+
+    fn push_let_binding(&mut self, bind_name: &str, bind_value: Alloc) {
+        if let Some(scope) = self.symbol_scopes.last_mut() {
+            scope.insert(bind_name.to_owned(), bind_value);
+        }
+    }
+
+    fn push_let_context(&mut self) {
+        self.symbol_scopes.push(HashMap::new());
+    }
+    fn pop_let_context(&mut self) {
+        self.symbol_scopes.pop();
+    }
+
+    fn resolve_symbol(&self, symbol_name: &str) -> Option<&Alloc> {
+        self
+            .symbol_scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.get(symbol_name))
+            .next()
     }
 }
