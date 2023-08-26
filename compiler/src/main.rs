@@ -4,6 +4,7 @@ extern crate lalrpop_util;
 use clap::Parser;
 use compilisp::ast::ModuleAst;
 use compilisp::backend::llvm::Context;
+use lalrpop_util::ParseError;
 use std::fs::File;
 use std::io;
 use std::io::Read;
@@ -28,16 +29,32 @@ fn compile(args: CliArgs) -> io::Result<()> {
     let mut module_text = String::new();
     module_file.read_to_string(&mut module_text)?;
 
+    let mut errors = Vec::new();
     let parser = lisp::ModuleParser::new();
-    match parser.parse(&module_text) {
+    match parser.parse(&mut errors, &module_text) {
         Ok(expr_vec) => {
-            let compiler = Context::new();
-            let source = args.input.to_string_lossy().to_string();
-            let root = ModuleAst {
-                expr_vec,
-                source,
-            };
-            compiler.add_module(root);
+            println!("Parsed: {expr_vec:?}");
+            if !errors.is_empty() {
+                println!("Compilation aborted");
+                for error in errors {
+                    match error.error {
+                        ParseError::UnrecognizedToken { token, expected } => {
+                            println!(
+                                "Unexepected token: {:?}, expecting: {:?}",
+                                token.1 .1, expected
+                            )
+                        }
+                        _ => {
+                            println!("Parser error: {:?}", error)
+                        }
+                    }
+                }
+            } else {
+                let compiler = Context::new();
+                let source = args.input.to_string_lossy().to_string();
+                let root = ModuleAst { expr_vec, source };
+                compiler.add_module(root);
+            }
         }
         Err(e) => {
             println!("Failed to compile: {e:?}");

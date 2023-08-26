@@ -1,8 +1,8 @@
 use std::str::FromStr;
-use compilisp::ast::{Expr};
+use compilisp::ast::Expr;
+use lalrpop_util::ErrorRecovery;
 
-grammar;
-
+grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, &'static str>>);
 // Set aliases and precedences
 
 match {
@@ -31,6 +31,7 @@ pub Expression: Expr = {
     Quotation => <>,
     SelfEvaluating => <>,
     ProcedureCall => <>,
+    ! => { errors.push(<>); Expr::Error },
 };
 
 // quotation:

@@ -1,7 +1,6 @@
-use crate::backend::runtime::EMPTY_STR;
 use llvm_sys::core::{
-    LLVMBuildAlloca, LLVMBuildGlobalStringPtr, LLVMBuildPointerCast, LLVMBuildStore, LLVMConstInt,
-    LLVMInt1TypeInContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext, LLVMPointerType,
+    LLVMBuildAlloca, LLVMBuildGlobalStringPtr, LLVMBuildStore, LLVMConstInt, LLVMInt1TypeInContext,
+    LLVMInt32TypeInContext, LLVMInt8TypeInContext,
 };
 use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMValueRef};
 use std::collections::HashMap;
@@ -69,19 +68,6 @@ impl ValueBuilder {
                 alloca
             }
         }
-    }
-
-    /// Cast any pointer type to i8*
-    /// # Safety
-    /// Any LLVM function is unsafe
-    pub unsafe fn cast_opaque(
-        context: LLVMContextRef,
-        builder: LLVMBuilderRef,
-        value_ref: &LLVMValueRef,
-    ) -> LLVMValueRef {
-        let cast_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-        // Cast stack address to *i8 (reuse previous i8 type)
-        LLVMBuildPointerCast(builder, *value_ref, cast_type, EMPTY_STR.as_ptr())
     }
 
     pub fn get_or_create_global_str(

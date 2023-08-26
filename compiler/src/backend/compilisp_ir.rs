@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::ast::Expr;
+use std::collections::HashMap;
 
 pub type AllocId = usize;
 
@@ -113,9 +113,11 @@ impl CompilispIrGenerator {
                 }
                 self.process_expr(expr)
             }
-            Expr::Symbol(name) => {
-                self.symbol_map.get(name).expect("Symbol doesn't exist").clone()
-            }
+            Expr::Symbol(name) => self
+                .symbol_map
+                .get(name)
+                .expect("Symbol doesn't exist")
+                .clone(),
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expr)
             }
