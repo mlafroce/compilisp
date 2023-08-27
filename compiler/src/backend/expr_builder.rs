@@ -1,11 +1,11 @@
-use crate::backend::compilisp_ir::{AllocId, AllocType, CompilispIr};
+use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
-use crate::backend::runtime::EMPTY_STR;
-use crate::backend::value_builder::Value::{ConstInt, GlobalString};
+use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
+use crate::backend::value_builder::Value::GlobalString;
 use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
-use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
+use llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBool, LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_ulonglong;
@@ -15,6 +15,12 @@ pub const BOOLEAN_DISCRIMINATOR: c_ulonglong = 1;
 pub const STR_DISCRIMINATOR: i32 = 2;
 pub const SYMBOL_DISCRIMINATOR: i32 = 3;
 
+struct ConditionalBlock {
+    block_then: LLVMBasicBlockRef,
+    block_else: Option<LLVMBasicBlockRef>,
+    block_finally: LLVMBasicBlockRef,
+}
+
 pub struct ExprBuilder<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -22,6 +28,7 @@ pub struct ExprBuilder<'a> {
     value_builder: RefCell<ValueBuilder>,
     function_factory: &'a FunctionFactory,
     alloc_map: HashMap<AllocId, LLVMValueRef>,
+    conditional_blocks: Vec<ConditionalBlock>,
 }
 
 impl<'a> ExprBuilder<'a> {
@@ -33,6 +40,7 @@ impl<'a> ExprBuilder<'a> {
     ) -> Self {
         let value_builder = RefCell::new(ValueBuilder::default());
         let alloc_map = HashMap::new();
+        let conditional_blocks = Vec::new();
         Self {
             module,
             builder,
@@ -40,6 +48,7 @@ impl<'a> ExprBuilder<'a> {
             value_builder,
             function_factory,
             alloc_map,
+            conditional_blocks,
         }
     }
 
@@ -74,41 +83,13 @@ impl<'a> ExprBuilder<'a> {
                     self.function_factory,
                     self.module,
                     self.builder,
+                    &self.alloc_map,
                     self,
                 );
-                let args_alloc = args
-                    .iter()
-                    .flat_map(|arg| {
-                        self.alloc_map
-                            .get(&arg.id)
-                            .map(|alloc| (arg.alloc_type, alloc))
-                    })
-                    .map(|(alloc_type, alloc)| {
-                        let discriminator = match alloc_type {
-                            AllocType::Int => ConstInt(NUMBER_DISCRIMINATOR),
-                            AllocType::String => ConstInt(STR_DISCRIMINATOR),
-                            AllocType::Bool => {
-                                todo!()
-                            }
-                        };
-                        let value_discriminator = self.build_value(&discriminator);
-                        (value_discriminator, alloc)
-                    })
-                    .map(|(disc, value)| unsafe {
-                        let opaque_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-                        let casted = LLVMBuildBitCast(
-                            self.builder,
-                            *value,
-                            opaque_ptr_t,
-                            EMPTY_STR.as_ptr(),
-                        );
-                        (disc, casted)
-                    })
-                    .collect::<Vec<_>>();
 
                 let return_alloc = self.alloc_map.get(&return_id).unwrap();
-                let (result_type_ptr, _) = call_builder
-                    .build_generic_call(name.as_str(), args_alloc.as_slice(), *return_alloc)
+                let result_type_ptr = call_builder
+                    .build_call(name.as_str(), args.as_slice(), *return_alloc)
                     .unwrap();
                 let result_type_type = unsafe { LLVMInt8TypeInContext(context) };
                 let _ = unsafe {
@@ -120,6 +101,65 @@ impl<'a> ExprBuilder<'a> {
                     )
                 };
             }
+            CompilispIr::IfExpressionEval { cond_alloc } => unsafe {
+                let context = LLVMGetModuleContext(self.module);
+                let cond_value = self.alloc_map.get(&cond_alloc).unwrap();
+                let ptr_to_bool = LLVMBuildPointerCast(
+                    self.builder,
+                    *cond_value,
+                    LLVMPointerType(LLVMInt32TypeInContext(context), 0),
+                    EMPTY_STR.as_ptr(),
+                );
+                let cond_value = LLVMBuildLoad2(
+                    self.builder,
+                    LLVMInt32TypeInContext(context),
+                    ptr_to_bool,
+                    EMPTY_STR.as_ptr(),
+                );
+                let cond_value_bool = LLVMBuildIntCast2(
+                    self.builder,
+                    cond_value,
+                    LLVMInt1TypeInContext(context),
+                    LLVMBool::from(false),
+                    EMPTY_STR.as_ptr(),
+                );
+
+                let block_then = LLVMCreateBasicBlockInContext(context, THEN_STR.as_ptr());
+                let block_else = LLVMCreateBasicBlockInContext(context, ELSE_STR.as_ptr());
+                let block_finally = LLVMCreateBasicBlockInContext(context, FINALLY_STR.as_ptr());
+                self.conditional_blocks.push(ConditionalBlock {
+                    block_else: Some(block_else),
+                    block_then,
+                    block_finally,
+                });
+                LLVMBuildCondBr(self.builder, cond_value_bool, block_then, block_else);
+                LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_then);
+                LLVMPositionBuilderAtEnd(self.builder, block_then);
+            },
+            CompilispIr::IfExpressionEndThen | CompilispIr::IfExpressionEndElse => unsafe {
+                let cur_block = self.conditional_blocks.last().unwrap();
+                if cur_block.block_else.is_some() {
+                    LLVMBuildBr(self.builder, cur_block.block_finally);
+                }
+            },
+            CompilispIr::IfExpressionElse { .. } => unsafe {
+                let cur_block = self.conditional_blocks.last().unwrap();
+                if let Some(block_else) = cur_block.block_else {
+                    LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_else);
+                    LLVMPositionBuilderAtEnd(self.builder, block_else);
+                }
+            },
+            CompilispIr::IfExpressionEndBlock { .. } => {
+                let cur_block = self.conditional_blocks.last().unwrap();
+                unsafe {
+                    LLVMInsertExistingBasicBlockAfterInsertBlock(
+                        self.builder,
+                        cur_block.block_finally,
+                    );
+                    LLVMPositionBuilderAtEnd(self.builder, cur_block.block_finally);
+                }
+            }
+            CompilispIr::IfExpressionEndExpression { .. } => {}
             CompilispIr::ProcedureScopeStart => {}
             CompilispIr::ProcedureScopeEnd => {}
             // Same as allocVar

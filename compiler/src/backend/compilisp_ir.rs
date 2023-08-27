@@ -18,6 +18,11 @@ pub struct Alloc {
 
 #[derive(Debug)]
 pub enum CompilispIr {
+    CallProcedure {
+        name: String,
+        return_id: AllocId,
+        args: Vec<Alloc>,
+    },
     ConstInt {
         alloc_id: AllocId,
         value: i32,
@@ -26,10 +31,19 @@ pub enum CompilispIr {
         alloc_id: AllocId,
         value: String,
     },
-    CallProcedure {
-        name: String,
-        return_id: AllocId,
-        args: Vec<Alloc>,
+    IfExpressionEval {
+        cond_alloc: AllocId,
+    },
+    IfExpressionElse {
+        result_alloc: AllocId,
+    },
+    IfExpressionEndElse,
+    IfExpressionEndThen,
+    IfExpressionEndBlock {
+        result_alloc: AllocId,
+    },
+    IfExpressionEndExpression {
+        result_alloc: AllocId,
     },
     ProcedureScopeStart,
     ProcedureScopeEnd,
@@ -83,29 +97,10 @@ impl CompilispIrGenerator {
                     alloc_type: AllocType::String,
                 }
             }
-            Expr::Procedure(name, args) => {
-                self.alloc_id += 1;
-                let return_alloc_id = self.alloc_id;
-                let mut call_args = vec![];
-                self.ir_buffer
-                    .push(CompilispIr::ProcedureReturnValue(return_alloc_id));
-                self.ir_buffer.push(CompilispIr::ProcedureScopeStart);
-                for arg in args {
-                    let alloc_id = self.process_expr(arg);
-                    call_args.push(alloc_id);
-                }
-                let name = name.clone();
-                self.ir_buffer.push(CompilispIr::CallProcedure {
-                    name,
-                    return_id: return_alloc_id,
-                    args: call_args,
-                });
-                self.ir_buffer.push(CompilispIr::ProcedureScopeEnd);
-                Alloc {
-                    id: return_alloc_id,
-                    alloc_type: AllocType::Int,
-                }
-            }
+            Expr::Procedure(name, args) => match name.as_str() {
+                "if" => self.build_if_call(args),
+                _ => self.build_generic_call(name, args),
+            },
             Expr::LetProcedure(symbols, expr) => {
                 self.push_let_context();
                 for (symbol_name, sym_expr) in symbols {
@@ -126,6 +121,57 @@ impl CompilispIrGenerator {
         }
     }
 
+    fn build_if_call(&mut self, args: &Vec<Expr>) -> Alloc {
+        let cond_expr = &args[0];
+        // if(cond_expr)
+        let cond_alloc = self.process_expr(cond_expr);
+        self.ir_buffer.push(CompilispIr::IfExpressionEval {
+            cond_alloc: cond_alloc.id,
+        });
+        // then {
+        let then_expr = &args[1];
+        let _ = self.process_expr(then_expr);
+        self.ir_buffer.push(CompilispIr::IfExpressionEndThen);
+        // } else {
+        if let Some(else_expr) = args.get(2) {
+            self.ir_buffer.push(CompilispIr::IfExpressionElse {
+                result_alloc: cond_alloc.id,
+            });
+            let _ = self.process_expr(else_expr);
+            self.ir_buffer.push(CompilispIr::IfExpressionEndElse);
+        }
+        // } finally
+        self.ir_buffer.push(CompilispIr::IfExpressionEndBlock {
+            result_alloc: cond_alloc.id,
+        });
+
+        return cond_alloc;
+    }
+
+    fn build_generic_call(&mut self, name: &str, args: &Vec<Expr>) -> Alloc {
+        self.alloc_id += 1;
+        let return_alloc_id = self.alloc_id;
+        let mut call_args = vec![];
+        self.ir_buffer
+            .push(CompilispIr::ProcedureReturnValue(return_alloc_id));
+        self.ir_buffer.push(CompilispIr::ProcedureScopeStart);
+        for arg in args {
+            let alloc_id = self.process_expr(arg);
+            call_args.push(alloc_id);
+        }
+        let name = name.to_owned();
+        self.ir_buffer.push(CompilispIr::CallProcedure {
+            name,
+            return_id: return_alloc_id,
+            args: call_args,
+        });
+        self.ir_buffer.push(CompilispIr::ProcedureScopeEnd);
+        Alloc {
+            id: return_alloc_id,
+            alloc_type: AllocType::Int,
+        }
+    }
+
     fn push_let_binding(&mut self, bind_name: &str, bind_value: Alloc) {
         if let Some(scope) = self.symbol_scopes.last_mut() {
             scope.insert(bind_name.to_owned(), bind_value);
@@ -140,8 +186,7 @@ impl CompilispIrGenerator {
     }
 
     fn resolve_symbol(&self, symbol_name: &str) -> Option<&Alloc> {
-        self
-            .symbol_scopes
+        self.symbol_scopes
             .iter()
             .rev()
             .flat_map(|scope| scope.get(symbol_name))

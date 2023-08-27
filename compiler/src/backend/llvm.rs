@@ -37,7 +37,6 @@ impl Context {
 
             for expr in root.expr_vec {
                 let ir = CompilispIrGenerator::new(&expr);
-                //println!("Generated IR {:?}", ir.ir_buffer);
                 runtime.process_ir(module, builder, ir.ir_buffer);
             }
 

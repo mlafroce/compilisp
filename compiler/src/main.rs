@@ -33,7 +33,6 @@ fn compile(args: CliArgs) -> io::Result<()> {
     let parser = lisp::ModuleParser::new();
     match parser.parse(&mut errors, &module_text) {
         Ok(expr_vec) => {
-            println!("Parsed: {expr_vec:?}");
             if !errors.is_empty() {
                 println!("Compilation aborted");
                 for error in errors {
