@@ -1,10 +1,10 @@
-pub mod compilisp_ir;
-pub mod debuginfo_builder;
-pub mod error;
-mod expr_builder;
+mod compilisp_ir;
+mod compilisp_llvm_generator;
+mod debuginfo_builder;
+mod error;
 mod function_builder;
 mod function_factory;
 pub mod llvm;
 mod procedure_call_builder;
-pub mod runtime;
+mod runtime;
 mod value_builder;

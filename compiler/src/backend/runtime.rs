@@ -1,5 +1,5 @@
 use crate::backend::compilisp_ir::CompilispIr;
-use crate::backend::expr_builder::ExprBuilder;
+use crate::backend::compilisp_llvm_generator::CompilispLLVMGenerator;
 use crate::backend::function_factory::FunctionFactory;
 use lazy_static::lazy_static;
 use llvm_sys::core::*;
@@ -64,7 +64,7 @@ impl RuntimeCompiler {
         IRStream: IntoIterator<Item = CompilispIr>,
     {
         let mut builder =
-            ExprBuilder::new(module, builder, self.runtime_ref, &self.function_factory);
+            CompilispLLVMGenerator::new(module, builder, self.runtime_ref, &self.function_factory);
         for inst in ir_stream {
             builder.build_instruction(inst);
         }

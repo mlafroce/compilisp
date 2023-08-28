@@ -1,6 +1,8 @@
 use crate::backend::compilisp_ir::{Alloc, AllocId, AllocType};
+use crate::backend::compilisp_llvm_generator::{
+    CompilispLLVMGenerator, NUMBER_DISCRIMINATOR, STR_DISCRIMINATOR,
+};
 use crate::backend::error::CompilispResult;
-use crate::backend::expr_builder::{ExprBuilder, NUMBER_DISCRIMINATOR, STR_DISCRIMINATOR};
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::runtime::EMPTY_STR;
 use crate::backend::value_builder::Value;
@@ -16,7 +18,7 @@ pub struct ProcedureCallBuilder<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
-    expr_builder: &'a ExprBuilder<'a>,
+    expr_builder: &'a CompilispLLVMGenerator<'a>,
 }
 
 impl<'a> ProcedureCallBuilder<'a> {
@@ -26,7 +28,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         module: LLVMModuleRef,
         builder: LLVMBuilderRef,
         alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
-        expr_builder: &'a ExprBuilder,
+        expr_builder: &'a CompilispLLVMGenerator,
     ) -> Self {
         Self {
             runtime_ref,

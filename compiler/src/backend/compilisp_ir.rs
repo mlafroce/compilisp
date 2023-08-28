@@ -98,14 +98,14 @@ impl CompilispIrGenerator {
                 }
             }
             Expr::Procedure(name, args) => match name.as_str() {
-                "if" => self.build_if_call(args),
+                "if" => self.build_if_call(args.as_slice()),
                 _ => self.build_generic_call(name, args),
             },
             Expr::LetProcedure(symbols, expr) => {
                 self.push_let_context();
                 for (symbol_name, sym_expr) in symbols {
                     let alloc = self.process_expr(sym_expr);
-                    self.push_let_binding(&symbol_name, alloc);
+                    self.push_let_binding(symbol_name, alloc);
                 }
                 let result = self.process_expr(expr);
                 self.pop_let_context();
@@ -121,7 +121,7 @@ impl CompilispIrGenerator {
         }
     }
 
-    fn build_if_call(&mut self, args: &Vec<Expr>) -> Alloc {
+    fn build_if_call(&mut self, args: &[Expr]) -> Alloc {
         let cond_expr = &args[0];
         // if(cond_expr)
         let cond_alloc = self.process_expr(cond_expr);
@@ -145,7 +145,7 @@ impl CompilispIrGenerator {
             result_alloc: cond_alloc.id,
         });
 
-        return cond_alloc;
+        cond_alloc
     }
 
     fn build_generic_call(&mut self, name: &str, args: &Vec<Expr>) -> Alloc {

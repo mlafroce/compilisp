@@ -21,7 +21,7 @@ struct ConditionalBlock {
     block_finally: LLVMBasicBlockRef,
 }
 
-pub struct ExprBuilder<'a> {
+pub struct CompilispLLVMGenerator<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     runtime_ref: LLVMValueRef,
@@ -31,7 +31,7 @@ pub struct ExprBuilder<'a> {
     conditional_blocks: Vec<ConditionalBlock>,
 }
 
-impl<'a> ExprBuilder<'a> {
+impl<'a> CompilispLLVMGenerator<'a> {
     pub(crate) fn new(
         module: LLVMModuleRef,
         builder: LLVMBuilderRef,
