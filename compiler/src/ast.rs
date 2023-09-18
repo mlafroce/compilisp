@@ -7,6 +7,8 @@ pub enum Expr {
     List(Vec<Expr>),
     Procedure(String, Vec<Expr>),
     LetProcedure(Vec<(String, Expr)>, Box<Expr>),
+    DefineExpr(String, Box<Expr>),
+    DefineProcedure(String, Box<Expr>),
     Error,
 }
 

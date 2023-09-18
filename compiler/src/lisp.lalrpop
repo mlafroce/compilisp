@@ -93,7 +93,10 @@ DatumList: Vec<Expr> = {
 // |   LPAREN procedure arg_list RPAREN	        {$$=makeProcedure($2, $3);}
 
 ProcedureCall: Expr = {
+    "(" "let" <b:Bindings> <p:ProcedureCall>")" => Expr::LetProcedure(b, Box::new(p)),
     "(let" <b:Bindings> <p:ProcedureCall>")" => Expr::LetProcedure(b, Box::new(p)),
+    "(" "define" <id:Symbol> <e:Expression> ")" => Expr::DefineExpr(id, Box::new(e)),
+    "(define" <id:Symbol> <e:Expression> ")" => Expr::DefineExpr(id, Box::new(e)),
     "(" <id:Symbol> <args:DatumList> ")" => Expr::Procedure(<>),
 };
 

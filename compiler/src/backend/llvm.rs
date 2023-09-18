@@ -21,24 +21,28 @@ impl Context {
     }
 
     pub fn add_module(&self, root: ModuleAst) {
-        let module = self.create_module(&root.source);
         unsafe {
             let target = LLVMGetDefaultTargetTriple();
-            LLVMSetTarget(module, target);
             let builder = LLVMCreateBuilderInContext(self.context);
+            let module_name = CString::new(root.source.as_str()).unwrap();
+
+            let module = LLVMModuleCreateWithNameInContext(module_name.as_ptr(), self.context);
+            LLVMSetTarget(module, target);
             let function_factory = FunctionFactory::new_with_base(module);
+            let di_builder = DebugInfoBuilder::new(module, &root.source);
 
             let main_block = self.build_main_function(module);
             LLVMPositionBuilderAtEnd(builder, main_block);
 
-            let di_builder = DebugInfoBuilder::new(module, &root.source);
-
             let runtime = RuntimeCompiler::init(builder, function_factory);
 
+            let mut ir_generator = CompilispIrGenerator::new();
+            let mut ir_buffer = vec![];
             for expr in root.expr_vec {
-                let ir = CompilispIrGenerator::new(&expr);
-                runtime.process_ir(module, builder, ir.ir_buffer);
+                ir_generator.process(expr);
+                ir_buffer.append(&mut ir_generator.ir_buffer.clone());
             }
+            runtime.process_ir(module, builder, ir_buffer);
 
             runtime.destroy(builder);
 
@@ -60,12 +64,6 @@ impl Context {
             LLVMDisposeModule(module)
         };
     }
-
-    fn create_module(&self, input_name: &str) -> LLVMModuleRef {
-        let module_name = CString::new(input_name).unwrap();
-        unsafe { LLVMModuleCreateWithNameInContext(module_name.as_ptr(), self.context) }
-    }
-
     unsafe fn build_main_function(&self, module: LLVMModuleRef) -> LLVMBasicBlockRef {
         let char_type = LLVMInt8TypeInContext(self.context);
 

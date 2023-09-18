@@ -1,0 +1,5 @@
+(define one 1)
+(define two 2)
+(display
+	(+ one two)
+)

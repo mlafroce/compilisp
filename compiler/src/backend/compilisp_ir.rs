@@ -16,7 +16,7 @@ pub struct Alloc {
     pub id: AllocId,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum CompilispIr {
     CallProcedure {
         name: String,
@@ -60,16 +60,18 @@ pub struct CompilispIrGenerator {
 }
 
 impl CompilispIrGenerator {
-    pub fn new(root: &Expr) -> Self {
+    pub fn new() -> Self {
         let ir_buffer = vec![];
-        let symbol_scopes = vec![];
-        let mut ret = Self {
+        let symbol_scopes = vec![HashMap::new()];
+        Self {
             ir_buffer,
             alloc_id: 0,
             symbol_scopes,
-        };
-        ret.process_expr(root);
-        ret
+        }
+    }
+
+    pub fn process(&mut self, root: Expr) {
+        self.process_expr(&root);
     }
 
     fn process_expr(&mut self, expr: &Expr) -> Alloc {
@@ -115,6 +117,12 @@ impl CompilispIrGenerator {
                 .resolve_symbol(name)
                 .expect("Symbol doesn't exist")
                 .clone(),
+            Expr::DefineExpr(name, value) => {
+                // I'm not sure what to do with these
+                let alloc = self.process_expr(value);
+                self.push_let_binding(name, alloc.clone());
+                alloc
+            }
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expr)
             }
