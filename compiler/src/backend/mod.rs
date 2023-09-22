@@ -5,6 +5,8 @@ mod error;
 mod function_builder;
 mod function_factory;
 pub mod llvm;
+mod llvm_compilisp;
 mod procedure_call_builder;
 mod runtime;
+mod type_factory;
 mod value_builder;

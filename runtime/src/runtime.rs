@@ -1,6 +1,29 @@
 use std::ffi::{c_char, c_void, CStr};
+use std::fmt::{Debug, Formatter};
 use std::io;
 use std::io::Write;
+use std::slice::from_raw_parts;
+
+#[repr(C)]
+#[derive(Debug)]
+pub enum CompilispType {
+    Number,
+    Boolean,
+    String,
+    Symbol,
+}
+
+#[repr(C)]
+pub union CompilispValue2 {
+    int_value: i32,
+    str_value: *mut c_char,
+}
+
+#[repr(C)]
+pub struct CompilispObject {
+    type_: CompilispType,
+    value: CompilispValue2,
+}
 
 #[derive(Debug)]
 pub enum CompilispError {
@@ -187,5 +210,20 @@ unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispV
                 .unwrap();
             CompilispValue::Symbol(value.to_owned())
         }
+    }
+}
+
+pub unsafe extern "C" fn compilisp_procedure_call_2(argc: u8, argv: *const CompilispObject) -> i32 {
+    println!("Received {argc} elements");
+    let objects = from_raw_parts(argv, argc as usize);
+    for obj in objects {
+        println!("Object: {obj:?}");
+    }
+    0
+}
+
+impl Debug for CompilispObject {
+    fn fmt(&self, _: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
     }
 }

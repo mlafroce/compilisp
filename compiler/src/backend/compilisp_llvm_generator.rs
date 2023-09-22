@@ -2,6 +2,7 @@ use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
+use crate::backend::type_factory::TypeFactory;
 use crate::backend::value_builder::Value::GlobalString;
 use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
@@ -27,6 +28,7 @@ pub struct CompilispLLVMGenerator<'a> {
     runtime_ref: LLVMValueRef,
     value_builder: RefCell<ValueBuilder>,
     function_factory: &'a FunctionFactory,
+    type_factory: &'a TypeFactory,
     alloc_map: HashMap<AllocId, LLVMValueRef>,
     conditional_blocks: Vec<ConditionalBlock>,
 }
@@ -37,6 +39,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
         builder: LLVMBuilderRef,
         runtime_ref: LLVMValueRef,
         function_factory: &'a FunctionFactory,
+        type_factory: &'a TypeFactory,
     ) -> Self {
         let value_builder = RefCell::new(ValueBuilder::default());
         let alloc_map = HashMap::new();
@@ -47,6 +50,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
             runtime_ref,
             value_builder,
             function_factory,
+            type_factory,
             alloc_map,
             conditional_blocks,
         }
@@ -81,6 +85,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 let call_builder = ProcedureCallBuilder::new(
                     self.runtime_ref,
                     self.function_factory,
+                    self.type_factory,
                     self.module,
                     self.builder,
                     &self.alloc_map,

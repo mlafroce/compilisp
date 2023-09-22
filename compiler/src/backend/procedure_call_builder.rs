@@ -5,6 +5,7 @@ use crate::backend::compilisp_llvm_generator::{
 use crate::backend::error::CompilispResult;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::runtime::EMPTY_STR;
+use crate::backend::type_factory::{CompilispType, TypeFactory};
 use crate::backend::value_builder::Value;
 use crate::backend::value_builder::Value::ConstInt;
 use llvm_sys::core::*;
@@ -15,6 +16,7 @@ use std::ffi::{c_uint, c_ulonglong, CString};
 pub struct ProcedureCallBuilder<'a> {
     runtime_ref: LLVMValueRef,
     function_factory: &'a FunctionFactory,
+    type_factory: &'a TypeFactory,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
@@ -25,6 +27,7 @@ impl<'a> ProcedureCallBuilder<'a> {
     pub fn new(
         runtime_ref: LLVMValueRef,
         function_factory: &'a FunctionFactory,
+        type_factory: &'a TypeFactory,
         module: LLVMModuleRef,
         builder: LLVMBuilderRef,
         alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
@@ -33,6 +36,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         Self {
             runtime_ref,
             function_factory,
+            type_factory,
             module,
             builder,
             expr_builder,
@@ -89,7 +93,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         };
         let name_value = self.expr_builder.build_value(&procedure_name);
 
-        let bind_type_type = LLVMInt8TypeInContext(context);
+        let bind_type_type = self.type_factory.get_type(CompilispType::Char);
         let stack_size_value = LLVMConstInt(
             bind_type_type,
             stack_size as c_ulonglong,
@@ -97,12 +101,12 @@ impl<'a> ProcedureCallBuilder<'a> {
         );
 
         let result_type_name = CString::new("res_type").unwrap();
-        let result_type_t = LLVMInt8TypeInContext(context);
+        let result_type_t = self.type_factory.get_type(CompilispType::Char);
         // Create stack space for result type (i8)
         let res_type_alloc =
             LLVMBuildAlloca(self.builder, result_type_t, result_type_name.as_ptr());
         // TODO: enable pointer results
-        let opaque_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
+        let opaque_ptr_t = self.type_factory.get_type(CompilispType::CharPtr);
         let result_alloc_i8 =
             LLVMBuildBitCast(self.builder, result_alloc, opaque_ptr_t, EMPTY_STR.as_ptr());
 

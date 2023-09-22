@@ -19,7 +19,10 @@ def build_compiler():
         "one_plus_two",
         "begin_01",
         "let_sum",
-        "conditional"
+        "let_nested",
+        "conditional",
+        "conditional_many",
+        "define_expr_01"
     ]
 )
 def test_compile_and_run(testcase):

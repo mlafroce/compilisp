@@ -4,6 +4,7 @@ use crate::backend::debuginfo_builder::DebugInfoBuilder;
 use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::runtime::RuntimeCompiler;
+use crate::backend::type_factory::TypeFactory;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::LLVMGetDefaultTargetTriple;
@@ -28,13 +29,14 @@ impl Context {
 
             let module = LLVMModuleCreateWithNameInContext(module_name.as_ptr(), self.context);
             LLVMSetTarget(module, target);
-            let function_factory = FunctionFactory::new_with_base(module);
+            let type_factory = TypeFactory::new(module);
+            let function_factory = FunctionFactory::new_with_base(module, &type_factory);
             let di_builder = DebugInfoBuilder::new(module, &root.source);
 
             let main_block = self.build_main_function(module);
             LLVMPositionBuilderAtEnd(builder, main_block);
 
-            let runtime = RuntimeCompiler::init(builder, function_factory);
+            let runtime = RuntimeCompiler::init(builder, function_factory, type_factory);
 
             let mut ir_generator = CompilispIrGenerator::new();
             let mut ir_buffer = vec![];

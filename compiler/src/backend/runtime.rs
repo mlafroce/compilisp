@@ -1,6 +1,7 @@
 use crate::backend::compilisp_ir::CompilispIr;
 use crate::backend::compilisp_llvm_generator::CompilispLLVMGenerator;
 use crate::backend::function_factory::FunctionFactory;
+use crate::backend::type_factory::TypeFactory;
 use lazy_static::lazy_static;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
@@ -11,6 +12,7 @@ use std::ptr::null_mut;
 pub struct RuntimeCompiler {
     runtime_ref: LLVMValueRef,
     function_factory: FunctionFactory,
+    type_factory: TypeFactory,
 }
 
 lazy_static! {
@@ -21,7 +23,11 @@ lazy_static! {
 }
 
 impl RuntimeCompiler {
-    pub unsafe fn init(builder: LLVMBuilderRef, function_factory: FunctionFactory) -> Self {
+    pub unsafe fn init(
+        builder: LLVMBuilderRef,
+        function_factory: FunctionFactory,
+        type_factory: TypeFactory,
+    ) -> Self {
         let (fn_ref, fn_argtypes) = function_factory.get("compilisp_init").copied().unwrap();
         let runtime_ref = LLVMBuildCall2(
             builder,
@@ -34,6 +40,7 @@ impl RuntimeCompiler {
         Self {
             runtime_ref,
             function_factory,
+            type_factory,
         }
     }
 
@@ -63,8 +70,13 @@ impl RuntimeCompiler {
     ) where
         IRStream: IntoIterator<Item = CompilispIr>,
     {
-        let mut builder =
-            CompilispLLVMGenerator::new(module, builder, self.runtime_ref, &self.function_factory);
+        let mut builder = CompilispLLVMGenerator::new(
+            module,
+            builder,
+            self.runtime_ref,
+            &self.function_factory,
+            &self.type_factory,
+        );
         for inst in ir_stream {
             builder.build_instruction(inst);
         }
