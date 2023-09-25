@@ -1,7 +1,4 @@
-use llvm_sys::core::{
-    LLVMGetModuleContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext, LLVMPointerType,
-    LLVMStructCreateNamed, LLVMStructSetBody,
-};
+use llvm_sys::core::{LLVMGetModuleContext, LLVMInt1TypeInContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody};
 use llvm_sys::prelude::{LLVMBool, LLVMModuleRef, LLVMTypeRef};
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -11,6 +8,8 @@ pub enum CompilispType {
     Char,
     CharPtr,
     Int,
+    IntPtr,
+    BoolPtr,
     CompilispObject,
 }
 
@@ -32,6 +31,13 @@ impl TypeFactory {
             let int_type = LLVMInt32TypeInContext(context);
             type_map.insert(CompilispType::Int, int_type);
 
+            let int_pointer = LLVMPointerType(int_type, 0);
+            type_map.insert(CompilispType::IntPtr, int_pointer);
+
+            let bool_type = LLVMInt1TypeInContext(context);
+            let bool_pointer = LLVMPointerType(bool_type, 0);
+            type_map.insert(CompilispType::BoolPtr, bool_pointer);
+
             let struct_name = CString::new("compilisp_object").unwrap();
             let compilisp_object = LLVMStructCreateNamed(context, struct_name.as_ptr());
             // Biggest object data type is a pointer
@@ -51,4 +57,9 @@ impl TypeFactory {
     pub fn get_type(&self, type_: CompilispType) -> LLVMTypeRef {
         self.type_map.get(&type_).unwrap().clone()
     }
+
+    pub fn get_pointer(&self, type_: LLVMTypeRef) -> LLVMTypeRef {
+        unsafe { LLVMPointerType(type_, 0) }
+    }
+
 }

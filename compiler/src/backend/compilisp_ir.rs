@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 pub type AllocId = usize;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AllocType {
     Int,
     String,

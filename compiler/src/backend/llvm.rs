@@ -42,7 +42,8 @@ impl Context {
             let mut ir_buffer = vec![];
             for expr in root.expr_vec {
                 ir_generator.process(expr);
-                ir_buffer.append(&mut ir_generator.ir_buffer.clone());
+                ir_buffer.append(&mut ir_generator.ir_buffer);
+                ir_generator.ir_buffer = vec![];
             }
             runtime.process_ir(module, builder, ir_buffer);
 

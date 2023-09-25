@@ -2,11 +2,11 @@ use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
-use crate::backend::type_factory::TypeFactory;
-use crate::backend::value_builder::Value::GlobalString;
+use crate::backend::type_factory::{CompilispType, TypeFactory};
+use crate::backend::value_builder::Value::VariableString;
 use crate::backend::value_builder::{Value, ValueBuilder};
 use llvm_sys::core::*;
-use llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBool, LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
+use llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_ulonglong;
@@ -59,7 +59,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
     pub fn build_value(&self, value: &Value) -> LLVMValueRef {
         let context = unsafe { LLVMGetModuleContext(self.module) };
         let mut value_builder = self.value_builder.borrow_mut();
-        unsafe { value_builder.build_value(context, self.builder, value) }
+        unsafe { value_builder.build_value(context, self.builder, value, self.type_factory) }
     }
     pub fn build_instruction(&mut self, inst: CompilispIr) {
         match inst {
@@ -69,8 +69,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 self.alloc_map.insert(alloc_id, alloc);
             }
             CompilispIr::GlobalString { alloc_id, value } => {
-                let symbol = GlobalString {
-                    name: "symbol_name",
+                let symbol = VariableString {
                     value: value.as_str(),
                 };
                 let alloc = self.build_value(&symbol);
@@ -81,51 +80,42 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 args,
                 return_id,
             } => {
-                let context = unsafe { LLVMGetModuleContext(self.module) };
                 let call_builder = ProcedureCallBuilder::new(
-                    self.runtime_ref,
                     self.function_factory,
                     self.type_factory,
-                    self.module,
                     self.builder,
                     &self.alloc_map,
                     self,
                 );
 
                 let return_alloc = self.alloc_map.get(&return_id).unwrap();
-                let result_type_ptr = call_builder
+                call_builder
                     .build_call(name.as_str(), args.as_slice(), *return_alloc)
                     .unwrap();
-                let result_type_type = unsafe { LLVMInt8TypeInContext(context) };
-                let _ = unsafe {
-                    LLVMBuildLoad2(
-                        self.builder,
-                        result_type_type,
-                        result_type_ptr,
-                        EMPTY_STR.as_ptr(),
-                    )
-                };
             }
             CompilispIr::IfExpressionEval { cond_alloc } => unsafe {
                 let context = LLVMGetModuleContext(self.module);
                 let cond_value = self.alloc_map.get(&cond_alloc).unwrap();
-                let ptr_to_bool = LLVMBuildPointerCast(
+                let mut value_idx_ptr = [
+                    self.build_value(&Value::ConstInt(0)),
+                    self.build_value(&Value::ConstInt(1)),
+                ];
+                let value_attr_ptr = LLVMBuildInBoundsGEP2(
                     self.builder,
+                    self.type_factory.get_type(CompilispType::CompilispObject),
                     *cond_value,
-                    LLVMPointerType(LLVMInt32TypeInContext(context), 0),
+                    value_idx_ptr.as_mut_ptr(),
+                    2,
                     EMPTY_STR.as_ptr(),
                 );
+                let int_type = self.type_factory.get_type(CompilispType::BoolPtr);
+                let casted =
+                    LLVMBuildBitCast(self.builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());
+
                 let cond_value = LLVMBuildLoad2(
                     self.builder,
-                    LLVMInt32TypeInContext(context),
-                    ptr_to_bool,
-                    EMPTY_STR.as_ptr(),
-                );
-                let cond_value_bool = LLVMBuildIntCast2(
-                    self.builder,
-                    cond_value,
                     LLVMInt1TypeInContext(context),
-                    LLVMBool::from(false),
+                    casted,
                     EMPTY_STR.as_ptr(),
                 );
 
@@ -137,7 +127,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
                     block_then,
                     block_finally,
                 });
-                LLVMBuildCondBr(self.builder, cond_value_bool, block_then, block_else);
+                LLVMBuildCondBr(self.builder, cond_value, block_then, block_else);
                 LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_then);
                 LLVMPositionBuilderAtEnd(self.builder, block_then);
             },

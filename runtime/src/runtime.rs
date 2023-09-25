@@ -1,11 +1,11 @@
-use std::ffi::{c_char, c_void, CStr};
-use std::fmt::{Debug, Formatter};
+use std::ffi::{c_char, CStr};
+use std::fmt::Debug;
 use std::io;
 use std::io::Write;
 use std::slice::from_raw_parts;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum CompilispType {
     Number,
     Boolean,
@@ -14,15 +14,16 @@ pub enum CompilispType {
 }
 
 #[repr(C)]
-pub union CompilispValue2 {
+pub union CompilispObjectValue {
     int_value: i32,
+    bool_value: bool,
     str_value: *mut c_char,
 }
 
 #[repr(C)]
 pub struct CompilispObject {
     type_: CompilispType,
-    value: CompilispValue2,
+    value: CompilispObjectValue,
 }
 
 #[derive(Debug)]
@@ -33,7 +34,7 @@ pub enum CompilispError {
 
 type CompilispResult<T> = Result<T, CompilispError>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum CompilispValue {
     Number(i32),
     Boolean(bool),
@@ -42,38 +43,18 @@ pub enum CompilispValue {
 }
 
 #[derive(Default)]
-pub struct CompilispRuntime {
-    args: Vec<CompilispValue>,
-}
+pub struct CompilispRuntime;
 
 impl<'a> CompilispRuntime {
-    pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-
-    pub fn procedure_push_arg(&mut self, arg: CompilispValue) {
-        self.args.push(arg);
-    }
-
     pub fn procedure_call(
-        &mut self,
         procedure_name: &str,
-        stack_size: u8,
+        args: &[CompilispValue],
     ) -> CompilispResult<CompilispValue> {
-        let args = self.pop_args(stack_size);
         match procedure_name {
-            "+" => {
-                let result = compilisp_sum(args.as_slice());
-                result
-            }
-            "<" => {
-                let result = compilisp_le(args.as_slice());
-                result
-            }
+            "+" => compilisp_sum(args),
+            "<" => compilisp_le(args),
             "display" => {
-                for value in &args {
+                for value in args {
                     match value {
                         CompilispValue::Number(num) => print!("{num}"),
                         CompilispValue::Boolean(num) => print!("{num}"),
@@ -82,18 +63,13 @@ impl<'a> CompilispRuntime {
                             panic!("Unexepected value");
                         }
                     }
-                    print!("");
                 }
                 // TODO: void return
                 Ok(CompilispValue::Number(0))
             }
+            "begin" => { args.last().cloned().ok_or(CompilispError::ArgTypeMismatch)},
             _ => Err(CompilispError::UnboundVariable(procedure_name.to_string())),
         }
-    }
-
-    fn pop_args(&mut self, stack_size: u8) -> Vec<CompilispValue> {
-        let new_len = self.args.len() - stack_size as usize;
-        self.args.drain(new_len..).collect::<Vec<_>>()
     }
 }
 
@@ -128,7 +104,7 @@ fn compilisp_sum(args: &[CompilispValue]) -> CompilispResult<CompilispValue> {
 
 #[no_mangle]
 pub extern "C" fn compilisp_init() -> *mut CompilispRuntime {
-    let b = Box::new(CompilispRuntime::new());
+    let b = Box::new(CompilispRuntime::default());
     Box::into_raw(b)
 }
 
@@ -140,90 +116,57 @@ pub unsafe extern "C" fn compilisp_destroy(_self: *mut CompilispRuntime) {
     drop(Box::from_raw(_self));
 }
 
-/// # Safety
-/// _self must be a valid pointer to a compilisp runtime
-#[no_mangle]
-pub unsafe extern "C" fn compilisp_procedure_push_arg(
-    _self: *mut CompilispRuntime,
-    bind_type: u8,
-    bind_value: *const c_void,
-) {
-    let mut _self = &mut *_self;
-    let arg = opaque_to_enum(bind_type, bind_value);
-    _self.procedure_push_arg(arg);
-}
-
-/// # Safety
-/// _self must be a valid pointer to a compilisp runtime
 #[no_mangle]
 pub unsafe extern "C" fn compilisp_procedure_call(
-    _self: *mut CompilispRuntime,
-    procedure_name: *const c_char,
-    stack_size: u8,
-    result_type: *mut i8,
-    result_value: *mut i32,
-) -> i32 {
-    let mut _self = &mut *_self;
-    let c_procedure_name = CStr::from_ptr(procedure_name);
-    let result = _self.procedure_call(c_procedure_name.to_str().unwrap(), stack_size);
-    if let Ok(value) = result {
+    name: *const c_char,
+    argv: *const CompilispObject,
+    argc: u32,
+) -> CompilispObject {
+    let name = CStr::from_ptr(name);
+    let objects = from_raw_parts(argv, argc as usize);
+    let args = objects
+        .iter()
+        .flat_map(CompilispValue::try_from)
+        .collect::<Vec<_>>();
+    let procedure_name = name.to_str().unwrap();
+    let result = CompilispRuntime::procedure_call(procedure_name, args.as_slice()).unwrap();
+    CompilispObject::from(&result)
+}
+
+impl TryFrom<&CompilispObject> for CompilispValue {
+    type Error = ();
+
+    fn try_from(obj: &CompilispObject) -> Result<Self, Self::Error> {
+        match obj.type_ {
+            CompilispType::Number => Ok(CompilispValue::Number(unsafe { obj.value.int_value })),
+            CompilispType::Boolean => Ok(CompilispValue::Boolean(unsafe { obj.value.bool_value })),
+            CompilispType::String => unsafe {
+                let s = CStr::from_ptr(obj.value.str_value);
+                Ok(CompilispValue::String(s.to_str().unwrap().to_string()))
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<&CompilispValue> for CompilispObject {
+    fn from(value: &CompilispValue) -> Self {
         match value {
             CompilispValue::Number(value) => {
-                *result_type = 0;
-                *result_value = value;
+                let value = CompilispObjectValue { int_value: *value };
+                Self {
+                    type_: CompilispType::Number,
+                    value,
+                }
             }
             CompilispValue::Boolean(value) => {
-                *result_type = 1;
-                *result_value = if value { 1 } else { 0 };
+                let value = CompilispObjectValue { bool_value: *value };
+                Self {
+                    type_: CompilispType::Boolean,
+                    value,
+                }
             }
-            _ => panic!("Only number operations supported"),
+            _ => todo!("Unsupported return value"),
         }
-        0
-    } else {
-        match result {
-            Err(CompilispError::UnboundVariable(_)) => 1,
-            Err(CompilispError::ArgTypeMismatch) => 2,
-            _ => unreachable!(),
-        }
-    }
-}
-
-unsafe fn opaque_to_enum(bind_type: u8, bind_value: *const c_void) -> CompilispValue {
-    match bind_type {
-        0 => {
-            let value = *(bind_value as *const i32);
-            CompilispValue::Number(value)
-        }
-        1 => {
-            let value = *(bind_value as *const i32);
-            CompilispValue::Boolean(value != 0)
-        }
-        2 => {
-            let value = CStr::from_ptr(bind_value as *const c_char)
-                .to_str()
-                .unwrap();
-            CompilispValue::String(value.to_owned())
-        }
-        _ => {
-            let value = CStr::from_ptr(bind_value as *const c_char)
-                .to_str()
-                .unwrap();
-            CompilispValue::Symbol(value.to_owned())
-        }
-    }
-}
-
-pub unsafe extern "C" fn compilisp_procedure_call_2(argc: u8, argv: *const CompilispObject) -> i32 {
-    println!("Received {argc} elements");
-    let objects = from_raw_parts(argv, argc as usize);
-    for obj in objects {
-        println!("Object: {obj:?}");
-    }
-    0
-}
-
-impl Debug for CompilispObject {
-    fn fmt(&self, _: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
     }
 }

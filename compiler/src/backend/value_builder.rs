@@ -1,6 +1,8 @@
+use crate::backend::runtime::EMPTY_STR;
+use crate::backend::type_factory::{CompilispType, TypeFactory};
 use llvm_sys::core::{
-    LLVMBuildAlloca, LLVMBuildGlobalStringPtr, LLVMBuildStore, LLVMConstInt, LLVMInt1TypeInContext,
-    LLVMInt32TypeInContext, LLVMInt8TypeInContext,
+    LLVMBuildAlloca, LLVMBuildBitCast, LLVMBuildGlobalStringPtr, LLVMBuildInBoundsGEP2,
+    LLVMBuildStore, LLVMConstInt, LLVMInt1TypeInContext,
 };
 use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMValueRef};
 use std::collections::HashMap;
@@ -13,6 +15,7 @@ pub struct ValueBuilder {
 #[derive(Debug)]
 pub enum Value<'a> {
     GlobalString { name: &'a str, value: &'a str },
+    VariableString { value: &'a str },
     ConstInt(i32),
     VarInt32(&'a str, Option<i32>),
     VarBool(&'a str, Option<bool>),
@@ -28,29 +31,91 @@ impl ValueBuilder {
         context: LLVMContextRef,
         builder: LLVMBuilderRef,
         value: &Value,
+        type_factory: &TypeFactory,
     ) -> LLVMValueRef {
         match value {
             Value::GlobalString { name, value } => {
                 let escaped_value = value.replace("\\n", "\n");
                 self.get_or_create_global_str(builder, &escaped_value, name)
             }
-            Value::ConstInt(value) => {
-                let bind_type_type = unsafe { LLVMInt8TypeInContext(context) };
-                unsafe {
-                    LLVMConstInt(bind_type_type, *value as c_ulonglong, LLVMBool::from(false))
-                }
+            Value::VariableString {value} => {
+                let escaped_value = value.replace("\\n", "\n");
+
+                let alloca_type = type_factory.get_type(CompilispType::CompilispObject);
+                let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, EMPTY_STR.as_ptr()) };
+
+                let mut type_idx_ptr = [
+                    self.build_const_int(0, type_factory),
+                    self.build_const_int(0, type_factory),
+                ];
+                let type_attr_ptr = LLVMBuildInBoundsGEP2(
+                    builder,
+                    alloca_type,
+                    alloca,
+                    type_idx_ptr.as_mut_ptr(),
+                    2,
+                    EMPTY_STR.as_ptr(),
+                );
+                let const_disc_value = self.build_const_int(2, type_factory);
+                unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
+
+                let global_str = self.get_or_create_global_str(builder, &escaped_value, "name");
+                let mut value_idx_ptr = [
+                    self.build_const_int(0, type_factory),
+                    self.build_const_int(1, type_factory),
+                ];
+                let value_attr_ptr = LLVMBuildInBoundsGEP2(
+                    builder,
+                    alloca_type,
+                    alloca,
+                    value_idx_ptr.as_mut_ptr(),
+                    2,
+                    EMPTY_STR.as_ptr(),
+                );
+                // Save constant in stack
+                unsafe { LLVMBuildStore(builder, global_str, value_attr_ptr) };
+                alloca
             }
+            Value::ConstInt(value) => self.build_const_int(*value, type_factory),
             Value::VarInt32(name, init_value) => {
                 let name = CString::new(*name).unwrap();
-                let alloca_type = unsafe { LLVMInt32TypeInContext(context) };
+                let alloca_type = type_factory.get_type(CompilispType::CompilispObject);
                 let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, name.as_ptr()) };
                 if let Some(value) = *init_value {
                     // Create constant `num`
-                    let const_value = unsafe {
-                        LLVMConstInt(alloca_type, value as c_ulonglong, LLVMBool::from(false))
-                    };
+                    let mut type_idx_ptr = [
+                        self.build_const_int(0, type_factory),
+                        self.build_const_int(0, type_factory),
+                    ];
+                    let type_name = CString::new("type").unwrap();
+                    let type_attr_ptr = LLVMBuildInBoundsGEP2(
+                        builder,
+                        alloca_type,
+                        alloca,
+                        type_idx_ptr.as_mut_ptr(),
+                        2,
+                        type_name.as_ptr(),
+                    );
+                    let const_disc_value = self.build_const_int(0, type_factory);
+                    unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
+                    let mut value_idx_ptr = [
+                        self.build_const_int(0, type_factory),
+                        self.build_const_int(1, type_factory),
+                    ];
+                    let value_attr_ptr = LLVMBuildInBoundsGEP2(
+                        builder,
+                        alloca_type,
+                        alloca,
+                        value_idx_ptr.as_mut_ptr(),
+                        2,
+                        EMPTY_STR.as_ptr(),
+                    );
+                    let int_type = type_factory.get_type(CompilispType::IntPtr);
+                    let casted =
+                        LLVMBuildBitCast(builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());
                     // Save constant in stack
-                    unsafe { LLVMBuildStore(builder, const_value, alloca) };
+                    let const_value = self.build_const_int(value, type_factory);
+                    unsafe { LLVMBuildStore(builder, const_value, casted) };
                 }
                 alloca
             }
@@ -68,6 +133,11 @@ impl ValueBuilder {
                 alloca
             }
         }
+    }
+
+    fn build_const_int(&self, value: i32, type_factory: &TypeFactory) -> LLVMValueRef {
+        let bind_type_type = type_factory.get_type(CompilispType::Int);
+        unsafe { LLVMConstInt(bind_type_type, value as c_ulonglong, LLVMBool::from(false)) }
     }
 
     pub fn get_or_create_global_str(
