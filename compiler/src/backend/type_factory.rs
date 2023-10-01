@@ -1,4 +1,7 @@
-use llvm_sys::core::{LLVMGetModuleContext, LLVMInt1TypeInContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody};
+use llvm_sys::core::{
+    LLVMGetModuleContext, LLVMInt1TypeInContext, LLVMInt32TypeInContext, LLVMInt8TypeInContext,
+    LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody,
+};
 use llvm_sys::prelude::{LLVMBool, LLVMModuleRef, LLVMTypeRef};
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -61,5 +64,4 @@ impl TypeFactory {
     pub fn get_pointer(&self, type_: LLVMTypeRef) -> LLVMTypeRef {
         unsafe { LLVMPointerType(type_, 0) }
     }
-
 }

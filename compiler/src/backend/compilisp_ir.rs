@@ -34,14 +34,16 @@ pub enum CompilispIr {
     IfExpressionEval {
         cond_alloc: AllocId,
     },
-    IfExpressionElse {
+    IfExpressionElse,
+    IfExpressionEndElse {
         result_alloc: AllocId,
+        cond_alloc: AllocId,
     },
-    IfExpressionEndElse,
-    IfExpressionEndThen,
-    IfExpressionEndBlock {
+    IfExpressionEndThen {
         result_alloc: AllocId,
+        cond_alloc: AllocId,
     },
+    IfExpressionEndBlock,
     IfExpressionEndExpression {
         result_alloc: AllocId,
     },
@@ -138,20 +140,22 @@ impl CompilispIrGenerator {
         });
         // then {
         let then_expr = &args[1];
-        let _ = self.process_expr(then_expr);
-        self.ir_buffer.push(CompilispIr::IfExpressionEndThen);
+        let res = self.process_expr(then_expr);
+        self.ir_buffer.push(CompilispIr::IfExpressionEndThen {
+            result_alloc: res.id,
+            cond_alloc: cond_alloc.id,
+        });
         // } else {
         if let Some(else_expr) = args.get(2) {
-            self.ir_buffer.push(CompilispIr::IfExpressionElse {
-                result_alloc: cond_alloc.id,
+            self.ir_buffer.push(CompilispIr::IfExpressionElse);
+            let res = self.process_expr(else_expr);
+            self.ir_buffer.push(CompilispIr::IfExpressionEndElse {
+                result_alloc: res.id,
+                cond_alloc: cond_alloc.id,
             });
-            let _ = self.process_expr(else_expr);
-            self.ir_buffer.push(CompilispIr::IfExpressionEndElse);
         }
         // } finally
-        self.ir_buffer.push(CompilispIr::IfExpressionEndBlock {
-            result_alloc: cond_alloc.id,
-        });
+        self.ir_buffer.push(CompilispIr::IfExpressionEndBlock);
 
         cond_alloc
     }

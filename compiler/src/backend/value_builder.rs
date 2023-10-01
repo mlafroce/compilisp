@@ -38,7 +38,7 @@ impl ValueBuilder {
                 let escaped_value = value.replace("\\n", "\n");
                 self.get_or_create_global_str(builder, &escaped_value, name)
             }
-            Value::VariableString {value} => {
+            Value::VariableString { value } => {
                 let escaped_value = value.replace("\\n", "\n");
 
                 let alloca_type = type_factory.get_type(CompilispType::CompilispObject);

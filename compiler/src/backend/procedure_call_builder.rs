@@ -114,7 +114,8 @@ impl<'a> ProcedureCallBuilder<'a> {
             // Copy Compilisp object value
             let value_ptr = *self.alloc_map.get(&args[i].id).unwrap();
             let src_value_type = self.type_factory.get_type(CompilispType::CompilispObject);
-            let src_value = LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
+            let src_value =
+                LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
             LLVMBuildStore(self.builder, src_value, object_idx);
         }
 

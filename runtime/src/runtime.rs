@@ -67,7 +67,7 @@ impl<'a> CompilispRuntime {
                 // TODO: void return
                 Ok(CompilispValue::Number(0))
             }
-            "begin" => { args.last().cloned().ok_or(CompilispError::ArgTypeMismatch)},
+            "begin" => args.last().cloned().ok_or(CompilispError::ArgTypeMismatch),
             _ => Err(CompilispError::UnboundVariable(procedure_name.to_string())),
         }
     }

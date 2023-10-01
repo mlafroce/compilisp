@@ -22,6 +22,7 @@ def build_compiler():
         "let_nested",
         "conditional",
         "conditional_many",
+        "conditional_display",
         "define_expr_01"
     ]
 )

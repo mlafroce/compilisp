@@ -42,6 +42,7 @@ impl Context {
             let mut ir_buffer = vec![];
             for expr in root.expr_vec {
                 ir_generator.process(expr);
+                println!("IR: {:?}", ir_generator.ir_buffer);
                 ir_buffer.append(&mut ir_generator.ir_buffer);
                 ir_generator.ir_buffer = vec![];
             }

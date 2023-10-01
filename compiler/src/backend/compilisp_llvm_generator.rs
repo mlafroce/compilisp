@@ -131,20 +131,37 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_then);
                 LLVMPositionBuilderAtEnd(self.builder, block_then);
             },
-            CompilispIr::IfExpressionEndThen | CompilispIr::IfExpressionEndElse => unsafe {
+            CompilispIr::IfExpressionEndThen {
+                result_alloc,
+                cond_alloc,
+            }
+            | CompilispIr::IfExpressionEndElse {
+                result_alloc,
+                cond_alloc,
+            } => unsafe {
+                // Copy block result into conditional result
+                let result_value = self.alloc_map.get(&result_alloc).unwrap();
+                let cond_value = self.alloc_map.get(&cond_alloc).unwrap();
+                let result = LLVMBuildLoad2(
+                    self.builder,
+                    self.type_factory.get_type(CompilispType::CompilispObject),
+                    *result_value,
+                    EMPTY_STR.as_ptr(),
+                );
+                LLVMBuildStore(self.builder, result, *cond_value);
                 let cur_block = self.conditional_blocks.last().unwrap();
                 if cur_block.block_else.is_some() {
                     LLVMBuildBr(self.builder, cur_block.block_finally);
                 }
             },
-            CompilispIr::IfExpressionElse { .. } => unsafe {
+            CompilispIr::IfExpressionElse => unsafe {
                 let cur_block = self.conditional_blocks.last().unwrap();
                 if let Some(block_else) = cur_block.block_else {
                     LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_else);
                     LLVMPositionBuilderAtEnd(self.builder, block_else);
                 }
             },
-            CompilispIr::IfExpressionEndBlock { .. } => {
+            CompilispIr::IfExpressionEndBlock => {
                 let cur_block = self.conditional_blocks.last().unwrap();
                 unsafe {
                     LLVMInsertExistingBasicBlockAfterInsertBlock(
