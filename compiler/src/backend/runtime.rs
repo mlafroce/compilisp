@@ -1,4 +1,3 @@
-
 use crate::backend::compilisp_ir::CompilispIr;
 use crate::backend::compilisp_llvm_generator::CompilispLLVMGenerator;
 use crate::backend::function_factory::FunctionFactory;
@@ -11,7 +10,7 @@ use std::ptr::null_mut;
 
 /// Compiles scheme code using compilisp runtime calls
 pub struct RuntimeCompiler {
-    runtime_ref: LLVMValueRef,
+    runtime_ref: Option<LLVMValueRef>,
     function_factory: FunctionFactory,
     type_factory: TypeFactory,
 }
@@ -24,12 +23,20 @@ lazy_static! {
 }
 
 impl RuntimeCompiler {
-    pub unsafe fn init(
-        builder: LLVMBuilderRef,
-        function_factory: FunctionFactory,
-        type_factory: TypeFactory,
-    ) -> Self {
-        let (fn_ref, fn_argtypes) = function_factory.get("compilisp_init").copied().unwrap();
+    pub unsafe fn new(function_factory: FunctionFactory, type_factory: TypeFactory) -> Self {
+        Self {
+            runtime_ref: None,
+            function_factory,
+            type_factory,
+        }
+    }
+
+    pub unsafe fn init(&mut self, builder: LLVMBuilderRef) {
+        let (fn_ref, fn_argtypes) = self
+            .function_factory
+            .get("compilisp_init")
+            .copied()
+            .unwrap();
         let runtime_ref = LLVMBuildCall2(
             builder,
             fn_argtypes,
@@ -38,13 +45,8 @@ impl RuntimeCompiler {
             0,
             EMPTY_STR.as_ptr(),
         );
-        Self {
-            runtime_ref,
-            function_factory,
-            type_factory,
-        }
+        self.runtime_ref = Some(runtime_ref);
     }
-
     pub unsafe fn destroy(self, builder: LLVMBuilderRef) {
         let (fn_ref, fn_argtypes) = self
             .function_factory
@@ -52,7 +54,7 @@ impl RuntimeCompiler {
             .copied()
             .unwrap();
 
-        let mut args = [self.runtime_ref];
+        let mut args = [self.runtime_ref.unwrap()];
         LLVMBuildCall2(
             builder,
             fn_argtypes,
@@ -74,7 +76,6 @@ impl RuntimeCompiler {
         let mut builder = CompilispLLVMGenerator::new(
             module,
             builder,
-            self.runtime_ref,
             &self.function_factory,
             &self.type_factory,
         );

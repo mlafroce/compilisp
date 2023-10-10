@@ -1,4 +1,4 @@
-use crate::ast::ModuleAst;
+use crate::ast::{Expr, ModuleAst};
 use crate::backend::compilisp_ir::CompilispIrGenerator;
 use crate::backend::debuginfo_builder::DebugInfoBuilder;
 use crate::backend::function_builder::FunctionBuilder;
@@ -34,20 +34,30 @@ impl Context {
             let di_builder = DebugInfoBuilder::new(module, &root.source);
 
             let main_block = self.build_main_function(module);
-            LLVMPositionBuilderAtEnd(builder, main_block);
 
-            let runtime = RuntimeCompiler::init(builder, function_factory, type_factory);
+            let mut runtime = RuntimeCompiler::new(function_factory, type_factory);
 
             let mut ir_generator = CompilispIrGenerator::new();
-            let mut ir_buffer = vec![];
+            let mut main_buffer = vec![];
+            let mut defines_buffer = vec![];
             for expr in root.expr_vec {
-                ir_generator.process(expr);
-                println!("IR: {:?}", ir_generator.ir_buffer);
-                ir_buffer.append(&mut ir_generator.ir_buffer);
+                println!("Expr: {expr:?}");
+                ir_generator.process(&expr);
+                match expr {
+                    Expr::DefineProcedure(..) => {
+                        defines_buffer.append(&mut ir_generator.ir_buffer);
+                    }
+                    _ => {
+                        main_buffer.append(&mut ir_generator.ir_buffer);
+                    }
+                }
                 ir_generator.ir_buffer = vec![];
             }
-            runtime.process_ir(module, builder, ir_buffer);
+            runtime.process_ir(module, builder, defines_buffer);
 
+            LLVMPositionBuilderAtEnd(builder, main_block);
+            runtime.init(builder);
+            runtime.process_ir(module, builder, main_buffer);
             runtime.destroy(builder);
 
             //LLVMPositionBuilderAtEnd(builder, main_block);

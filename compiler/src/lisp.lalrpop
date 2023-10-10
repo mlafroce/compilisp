@@ -97,6 +97,8 @@ ProcedureCall: Expr = {
     "(let" <b:Bindings> <p:ProcedureCall>")" => Expr::LetProcedure(b, Box::new(p)),
     "(" "define" <id:Symbol> <e:Expression> ")" => Expr::DefineExpr(id, Box::new(e)),
     "(define" <id:Symbol> <e:Expression> ")" => Expr::DefineExpr(id, Box::new(e)),
+    "(" "define" <args:ProcedureDefineHead> <e:Expression> ")" => Expr::DefineProcedure(args.0, args.1, Box::new(e)),
+    "(define" <args:ProcedureDefineHead> <e:Expression> ")" => Expr::DefineProcedure(args.0, args.1, Box::new(e)),
     "(" <id:Symbol> <args:DatumList> ")" => Expr::Procedure(<>),
 };
 
@@ -122,4 +124,14 @@ Binding: (String, Expr) = {
 BindingList: Vec<(String, Expr)> = {
     Binding => vec!(<>),
     <mut list:BindingList> <b:Binding> => { list.push(b); list },
+};
+
+ProcedureDefineHead: (String, Vec<String>) = {
+    "(" <head:Symbol> ")" => (head, vec!()),
+    "(" <head:Symbol> <list:SymbolList> ")" => (head, list),
+}
+
+SymbolList: Vec<String> = {
+    <s:Symbol> => vec!(<>),
+    <mut list:SymbolList> <s:Symbol> => { list.push(s); list },
 };

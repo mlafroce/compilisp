@@ -1,0 +1,4 @@
+(define (sum_abc a b c)
+  (+ a b c)
+)
+(display (sum_abc 4 5 6) )

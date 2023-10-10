@@ -1,4 +1,5 @@
 use crate::backend::compilisp_ir::{AllocId, CompilispIr};
+use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
@@ -10,6 +11,7 @@ use llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBuilderRef, LLVMModuleRef, LLVMVa
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_ulonglong;
+use std::ptr::null_mut;
 
 pub const NUMBER_DISCRIMINATOR: i32 = 0;
 pub const BOOLEAN_DISCRIMINATOR: c_ulonglong = 1;
@@ -25,34 +27,34 @@ struct ConditionalBlock {
 pub struct CompilispLLVMGenerator<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    runtime_ref: LLVMValueRef,
     value_builder: RefCell<ValueBuilder>,
     function_factory: &'a FunctionFactory,
     type_factory: &'a TypeFactory,
     alloc_map: HashMap<AllocId, LLVMValueRef>,
     conditional_blocks: Vec<ConditionalBlock>,
+    current_function: Option<LLVMValueRef>,
 }
 
 impl<'a> CompilispLLVMGenerator<'a> {
     pub(crate) fn new(
         module: LLVMModuleRef,
         builder: LLVMBuilderRef,
-        runtime_ref: LLVMValueRef,
         function_factory: &'a FunctionFactory,
         type_factory: &'a TypeFactory,
     ) -> Self {
         let value_builder = RefCell::new(ValueBuilder::default());
         let alloc_map = HashMap::new();
         let conditional_blocks = Vec::new();
+        let current_function = None;
         Self {
             module,
             builder,
-            runtime_ref,
             value_builder,
             function_factory,
             type_factory,
             alloc_map,
             conditional_blocks,
+            current_function,
         }
     }
 
@@ -84,6 +86,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
                     self.function_factory,
                     self.type_factory,
                     self.builder,
+                    self.module,
                     &self.alloc_map,
                     self,
                 );
@@ -180,7 +183,57 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 let alloc = self.build_value(&value);
                 self.alloc_map.insert(id, alloc);
             }
-            CompilispIr::PushArg(_) => {}
+            CompilispIr::StartProcedure(name) => {
+                let context = unsafe { LLVMGetModuleContext(self.module) };
+                let int_type = self.type_factory.get_type(CompilispType::Int);
+                let obj_type = self.type_factory.get_type(CompilispType::CompilispObject);
+                let obj_ptr_type = self.type_factory.get_pointer(obj_type);
+                let builder = FunctionBuilder::new()
+                    .with_name(name.as_str())
+                    .with_ret_type(obj_type)
+                    .add_arg(int_type)
+                    .add_arg(obj_ptr_type);
+                let new_function = unsafe { builder.build(self.module) };
+                let block = unsafe {
+                    LLVMAppendBasicBlockInContext(context, new_function.0, EMPTY_STR.as_ptr())
+                };
+                self.current_function = Some(new_function.0);
+                unsafe { LLVMPositionBuilderAtEnd(self.builder, block) };
+            }
+            CompilispIr::MapProcedureArgs(args, mut alloc_id) => {
+                let fun = self.current_function.unwrap();
+                let argc = unsafe { LLVMGetFirstParam(fun) };
+                let argv = unsafe { LLVMGetNextParam(argc) };
+
+                for i in 0..args.len() {
+                    let mut value_idx_ptr = [self.build_value(&Value::ConstInt(i as i32))];
+                    let cur_arg = unsafe {
+                        LLVMBuildInBoundsGEP2(
+                            self.builder,
+                            self.type_factory.get_type(CompilispType::CompilispObject),
+                            argv,
+                            value_idx_ptr.as_mut_ptr(),
+                            1,
+                            EMPTY_STR.as_ptr(),
+                        )
+                    };
+
+                    alloc_id += 1;
+                    self.alloc_map.insert(alloc_id, cur_arg);
+                }
+            }
+            CompilispIr::EndProcedure(return_id) => {
+                let return_alloc = self.alloc_map.get(&return_id).unwrap();
+                let value = unsafe {
+                    LLVMBuildLoad2(
+                        self.builder,
+                        self.type_factory.get_type(CompilispType::CompilispObject),
+                        *return_alloc,
+                        EMPTY_STR.as_ptr(),
+                    )
+                };
+                unsafe { LLVMBuildRet(self.builder, value) };
+            }
         }
     }
 }

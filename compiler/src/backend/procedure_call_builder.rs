@@ -16,6 +16,7 @@ pub struct ProcedureCallBuilder<'a> {
     function_factory: &'a FunctionFactory,
     type_factory: &'a TypeFactory,
     builder: LLVMBuilderRef,
+    module: LLVMModuleRef,
     alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
     expr_builder: &'a CompilispLLVMGenerator<'a>,
 }
@@ -25,6 +26,7 @@ impl<'a> ProcedureCallBuilder<'a> {
         function_factory: &'a FunctionFactory,
         type_factory: &'a TypeFactory,
         builder: LLVMBuilderRef,
+        module: LLVMModuleRef,
         alloc_map: &'a HashMap<AllocId, LLVMValueRef>,
         expr_builder: &'a CompilispLLVMGenerator<'a>,
     ) -> Self {
@@ -32,6 +34,7 @@ impl<'a> ProcedureCallBuilder<'a> {
             function_factory,
             type_factory,
             builder,
+            module,
             expr_builder,
             alloc_map,
         }
@@ -43,10 +46,113 @@ impl<'a> ProcedureCallBuilder<'a> {
         args: &[Alloc],
         return_alloc: LLVMValueRef,
     ) -> CompilispResult<LLVMValueRef> {
-        unsafe { Ok(self.procedure_generic_call(name, args, return_alloc)) }
+        match name {
+            "begin" | "+" | "display" | "<" => unsafe {
+                Ok(self.procedure_runtime_call(name, args, return_alloc))
+            },
+            _ => unsafe { self.procedure_function_call(name, args, return_alloc) },
+        }
     }
 
-    unsafe fn procedure_generic_call(
+    unsafe fn procedure_function_call(
+        &self,
+        name: &str,
+        args: &[Alloc],
+        result_alloc: LLVMValueRef,
+    ) -> CompilispResult<LLVMValueRef> {
+        let c_name = CString::new(name).unwrap();
+        let function = LLVMGetNamedFunction(self.module, c_name.as_ptr());
+        let argc_type = self.type_factory.get_type(CompilispType::Int);
+        let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
+        let obj_arr_type = self.type_factory.get_pointer(object_type);
+        let mut args_types = [argc_type, obj_arr_type];
+        let args_size = args_types.len() as c_uint;
+        let args_ptr = args_types.as_mut_ptr();
+        let fn_type = LLVMFunctionType(object_type, args_ptr, args_size, LLVMBool::from(false));
+
+        let zero_idx = self.expr_builder.build_value(&Value::ConstInt(0));
+        let obj_type_idx = self.expr_builder.build_value(&Value::ConstInt(0));
+
+        let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
+        let object_array_type = LLVMArrayType(object_type, args.len() as _);
+        let object_array =
+            unsafe { LLVMBuildAlloca(self.builder, object_array_type, EMPTY_STR.as_ptr()) };
+
+        for i in 0..args.len() {
+            let index_value = self.expr_builder.build_value(&Value::ConstInt(i as i32));
+
+            let mut val_indexes = [zero_idx, index_value];
+            let mut obj_type_indexes = [zero_idx, obj_type_idx];
+
+            let object_idx_ptr = val_indexes.as_mut_ptr();
+            let obj_type_idx_ptr = obj_type_indexes.as_mut_ptr();
+            let arg_str = CString::new("arg_obj").unwrap();
+            let object_idx = LLVMBuildInBoundsGEP2(
+                self.builder,
+                object_array_type,
+                object_array,
+                object_idx_ptr,
+                2,
+                arg_str.as_ptr(),
+            );
+
+            let type_attr_ptr = LLVMBuildInBoundsGEP2(
+                self.builder,
+                object_type,
+                object_idx,
+                obj_type_idx_ptr,
+                2,
+                EMPTY_STR.as_ptr(),
+            );
+            let discriminator = match args[i].alloc_type {
+                AllocType::Int => Value::ConstInt(NUMBER_DISCRIMINATOR),
+                AllocType::String => Value::ConstInt(STR_DISCRIMINATOR),
+                AllocType::Bool => {
+                    todo!()
+                }
+            };
+            let value_discriminator = self.expr_builder.build_value(&discriminator);
+
+            LLVMBuildStore(self.builder, value_discriminator, type_attr_ptr);
+            // Copy Compilisp object value
+            let value_ptr = *self.alloc_map.get(&args[i].id).unwrap();
+            let src_value_type = self.type_factory.get_type(CompilispType::CompilispObject);
+            let src_value =
+                LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
+            LLVMBuildStore(self.builder, src_value, object_idx);
+        }
+
+        let mut first_idx = [zero_idx, zero_idx];
+
+        let object_array_ptr = unsafe {
+            LLVMBuildInBoundsGEP2(
+                self.builder,
+                object_array_type,
+                object_array,
+                first_idx.as_mut_ptr(),
+                2,
+                EMPTY_STR.as_ptr(),
+            )
+        };
+
+        let stack_size_value = self
+            .expr_builder
+            .build_value(&Value::ConstInt(args.len() as i32));
+
+        let mut args = [stack_size_value, object_array_ptr];
+        let result_value = LLVMBuildCall2(
+            self.builder,
+            fn_type,
+            function,
+            args.as_mut_ptr(),
+            args_size,
+            EMPTY_STR.as_ptr(),
+        );
+        LLVMBuildStore(self.builder, result_value, result_alloc);
+        Ok(result_alloc)
+    }
+
+    unsafe fn procedure_runtime_call(
         &self,
         opname: &str,
         args: &[Alloc],

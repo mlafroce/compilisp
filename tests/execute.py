@@ -23,7 +23,9 @@ def build_compiler():
         "conditional",
         "conditional_many",
         "conditional_display",
-        "define_expr_01"
+        "define_expr_01",
+        "define_procedure_01",
+        "define_procedure_02"
     ]
 )
 def test_compile_and_run(testcase):

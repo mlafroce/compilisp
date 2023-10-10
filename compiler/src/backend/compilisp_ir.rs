@@ -50,7 +50,9 @@ pub enum CompilispIr {
     ProcedureScopeStart,
     ProcedureScopeEnd,
     ProcedureReturnValue(AllocId),
-    PushArg(AllocId),
+    StartProcedure(String),
+    MapProcedureArgs(Vec<String>, AllocId),
+    EndProcedure(AllocId),
 }
 
 // Todo: generate ir in a lazy way and make buffer private
@@ -72,8 +74,8 @@ impl CompilispIrGenerator {
         }
     }
 
-    pub fn process(&mut self, root: Expr) {
-        self.process_expr(&root);
+    pub fn process(&mut self, root: &Expr) {
+        self.process_expr(root);
     }
 
     fn process_expr(&mut self, expr: &Expr) -> Alloc {
@@ -124,6 +126,26 @@ impl CompilispIrGenerator {
                 let alloc = self.process_expr(value);
                 self.push_let_binding(name, alloc.clone());
                 alloc
+            }
+            Expr::DefineProcedure(name, args, body) => {
+                self.ir_buffer
+                    .push(CompilispIr::StartProcedure(name.clone()));
+                // Workaround to reuse let scopes for symbol resolutions
+                self.push_let_context();
+                self.ir_buffer
+                    .push(CompilispIr::MapProcedureArgs(args.clone(), self.alloc_id));
+                for symbol_name in args {
+                    self.alloc_id += 1;
+                    let alloc = Alloc {
+                        alloc_type: AllocType::Int,
+                        id: self.alloc_id,
+                    };
+                    self.push_let_binding(symbol_name, alloc);
+                }
+                let result = self.process_expr(body);
+                self.ir_buffer.push(CompilispIr::EndProcedure(result.id));
+                self.pop_let_context();
+                result
             }
             _ => {
                 unimplemented!("Cannot process this token yet {:?}", expr)
