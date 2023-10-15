@@ -1,6 +1,7 @@
 use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
+use crate::backend::gep_builder::GepBuilder;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
 use crate::backend::type_factory::{CompilispType, TypeFactory};
@@ -11,7 +12,6 @@ use llvm_sys::prelude::{LLVMBasicBlockRef, LLVMBuilderRef, LLVMModuleRef, LLVMVa
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_ulonglong;
-use std::ptr::null_mut;
 
 pub const NUMBER_DISCRIMINATOR: i32 = 0;
 pub const BOOLEAN_DISCRIMINATOR: c_ulonglong = 1;
@@ -98,19 +98,12 @@ impl<'a> CompilispLLVMGenerator<'a> {
             }
             CompilispIr::IfExpressionEval { cond_alloc } => unsafe {
                 let context = LLVMGetModuleContext(self.module);
-                let cond_value = self.alloc_map.get(&cond_alloc).unwrap();
-                let mut value_idx_ptr = [
-                    self.build_value(&Value::ConstInt(0)),
-                    self.build_value(&Value::ConstInt(1)),
-                ];
-                let value_attr_ptr = LLVMBuildInBoundsGEP2(
-                    self.builder,
-                    self.type_factory.get_type(CompilispType::CompilispObject),
-                    *cond_value,
-                    value_idx_ptr.as_mut_ptr(),
-                    2,
-                    EMPTY_STR.as_ptr(),
-                );
+                let cond_value = self.alloc_map.get(&cond_alloc).copied().unwrap();
+                let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
+
+                let value_attr_ptr =
+                    GepBuilder::build(self.builder, cond_value, object_type, &[0, 1]);
+
                 let int_type = self.type_factory.get_type(CompilispType::BoolPtr);
                 let casted =
                     LLVMBuildBitCast(self.builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());
@@ -206,16 +199,10 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 let argv = unsafe { LLVMGetNextParam(argc) };
 
                 for i in 0..args.len() {
-                    let mut value_idx_ptr = [self.build_value(&Value::ConstInt(i as i32))];
                     let cur_arg = unsafe {
-                        LLVMBuildInBoundsGEP2(
-                            self.builder,
-                            self.type_factory.get_type(CompilispType::CompilispObject),
-                            argv,
-                            value_idx_ptr.as_mut_ptr(),
-                            1,
-                            EMPTY_STR.as_ptr(),
-                        )
+                        let object_type =
+                            self.type_factory.get_type(CompilispType::CompilispObject);
+                        GepBuilder::build(self.builder, argv, object_type, &[i])
                     };
 
                     alloc_id += 1;

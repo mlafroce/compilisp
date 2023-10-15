@@ -58,7 +58,7 @@ impl TypeFactory {
     }
 
     pub fn get_type(&self, type_: CompilispType) -> LLVMTypeRef {
-        self.type_map.get(&type_).unwrap().clone()
+        self.type_map.get(&type_).copied().unwrap()
     }
 
     pub fn get_pointer(&self, type_: LLVMTypeRef) -> LLVMTypeRef {

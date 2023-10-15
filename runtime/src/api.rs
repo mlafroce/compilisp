@@ -6,7 +6,7 @@ use std::slice::from_raw_parts;
 
 #[no_mangle]
 pub extern "C" fn compilisp_init() -> *mut CompilispRuntime {
-    let b = Box::new(CompilispRuntime::default());
+    let b = Box::<CompilispRuntime>::default();
     Box::into_raw(b)
 }
 
@@ -19,6 +19,9 @@ pub unsafe extern "C" fn compilisp_destroy(_self: *mut CompilispRuntime) {
 }
 
 #[no_mangle]
+/// # Safety
+/// name should be a valid runtime procedure name
+/// argv should be an array of CompilispObject with size = argc
 pub unsafe extern "C" fn compilisp_procedure_call(
     name: *const c_char,
     argv: *const CompilispObject,

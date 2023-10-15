@@ -1,8 +1,9 @@
+use crate::backend::gep_builder::GepBuilder;
 use crate::backend::runtime::EMPTY_STR;
 use crate::backend::type_factory::{CompilispType, TypeFactory};
 use llvm_sys::core::{
-    LLVMBuildAlloca, LLVMBuildBitCast, LLVMBuildGlobalStringPtr, LLVMBuildInBoundsGEP2,
-    LLVMBuildStore, LLVMConstInt, LLVMInt1TypeInContext,
+    LLVMBuildAlloca, LLVMBuildBitCast, LLVMBuildGlobalStringPtr, LLVMBuildStore, LLVMConstInt,
+    LLVMInt1TypeInContext,
 };
 use llvm_sys::prelude::{LLVMBool, LLVMBuilderRef, LLVMContextRef, LLVMValueRef};
 use std::collections::HashMap;
@@ -19,7 +20,6 @@ pub enum Value<'a> {
     ConstInt(i32),
     VarInt32(&'a str, Option<i32>),
     VarBool(&'a str, Option<bool>),
-    //Integer(i32)
 }
 
 impl ValueBuilder {
@@ -44,34 +44,14 @@ impl ValueBuilder {
                 let alloca_type = type_factory.get_type(CompilispType::CompilispObject);
                 let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, EMPTY_STR.as_ptr()) };
 
-                let mut type_idx_ptr = [
-                    self.build_const_int(0, type_factory),
-                    self.build_const_int(0, type_factory),
-                ];
-                let type_attr_ptr = LLVMBuildInBoundsGEP2(
-                    builder,
-                    alloca_type,
-                    alloca,
-                    type_idx_ptr.as_mut_ptr(),
-                    2,
-                    EMPTY_STR.as_ptr(),
-                );
+                let type_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 0]);
+
                 let const_disc_value = self.build_const_int(2, type_factory);
                 unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
 
                 let global_str = self.get_or_create_global_str(builder, &escaped_value, "name");
-                let mut value_idx_ptr = [
-                    self.build_const_int(0, type_factory),
-                    self.build_const_int(1, type_factory),
-                ];
-                let value_attr_ptr = LLVMBuildInBoundsGEP2(
-                    builder,
-                    alloca_type,
-                    alloca,
-                    value_idx_ptr.as_mut_ptr(),
-                    2,
-                    EMPTY_STR.as_ptr(),
-                );
+                let value_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 1]);
+
                 // Save constant in stack
                 unsafe { LLVMBuildStore(builder, global_str, value_attr_ptr) };
                 alloca
@@ -83,33 +63,10 @@ impl ValueBuilder {
                 let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, name.as_ptr()) };
                 if let Some(value) = *init_value {
                     // Create constant `num`
-                    let mut type_idx_ptr = [
-                        self.build_const_int(0, type_factory),
-                        self.build_const_int(0, type_factory),
-                    ];
-                    let type_name = CString::new("type").unwrap();
-                    let type_attr_ptr = LLVMBuildInBoundsGEP2(
-                        builder,
-                        alloca_type,
-                        alloca,
-                        type_idx_ptr.as_mut_ptr(),
-                        2,
-                        type_name.as_ptr(),
-                    );
+                    let type_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 0]);
                     let const_disc_value = self.build_const_int(0, type_factory);
                     unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
-                    let mut value_idx_ptr = [
-                        self.build_const_int(0, type_factory),
-                        self.build_const_int(1, type_factory),
-                    ];
-                    let value_attr_ptr = LLVMBuildInBoundsGEP2(
-                        builder,
-                        alloca_type,
-                        alloca,
-                        value_idx_ptr.as_mut_ptr(),
-                        2,
-                        EMPTY_STR.as_ptr(),
-                    );
+                    let value_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 1]);
                     let int_type = type_factory.get_type(CompilispType::IntPtr);
                     let casted =
                         LLVMBuildBitCast(builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());

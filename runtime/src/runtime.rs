@@ -42,7 +42,7 @@ pub enum CompilispValue {
 #[derive(Default)]
 pub struct CompilispRuntime;
 
-impl<'a> CompilispRuntime {
+impl CompilispRuntime {
     pub fn procedure_call(
         procedure_name: &str,
         args: &[CompilispValue],

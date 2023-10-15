@@ -4,6 +4,7 @@ use crate::backend::compilisp_llvm_generator::{
 };
 use crate::backend::error::CompilispResult;
 use crate::backend::function_factory::FunctionFactory;
+use crate::backend::gep_builder::GepBuilder;
 use crate::backend::runtime::EMPTY_STR;
 use crate::backend::type_factory::{CompilispType, TypeFactory};
 use crate::backend::value_builder::Value;
@@ -70,41 +71,21 @@ impl<'a> ProcedureCallBuilder<'a> {
         let args_ptr = args_types.as_mut_ptr();
         let fn_type = LLVMFunctionType(object_type, args_ptr, args_size, LLVMBool::from(false));
 
-        let zero_idx = self.expr_builder.build_value(&Value::ConstInt(0));
-        let obj_type_idx = self.expr_builder.build_value(&Value::ConstInt(0));
-
         let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
         let object_array_type = LLVMArrayType(object_type, args.len() as _);
         let object_array =
             unsafe { LLVMBuildAlloca(self.builder, object_array_type, EMPTY_STR.as_ptr()) };
 
-        for i in 0..args.len() {
-            let index_value = self.expr_builder.build_value(&Value::ConstInt(i as i32));
+        for (i, arg) in args.iter().enumerate() {
+            let val_indexes = [0, i];
+            let obj_type_indexes = [0, 0];
 
-            let mut val_indexes = [zero_idx, index_value];
-            let mut obj_type_indexes = [zero_idx, obj_type_idx];
+            let object_idx =
+                GepBuilder::build(self.builder, object_array, object_array_type, &val_indexes);
+            let type_attr_ptr =
+                GepBuilder::build(self.builder, object_idx, object_type, &obj_type_indexes);
 
-            let object_idx_ptr = val_indexes.as_mut_ptr();
-            let obj_type_idx_ptr = obj_type_indexes.as_mut_ptr();
-            let arg_str = CString::new("arg_obj").unwrap();
-            let object_idx = LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_array_type,
-                object_array,
-                object_idx_ptr,
-                2,
-                arg_str.as_ptr(),
-            );
-
-            let type_attr_ptr = LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_type,
-                object_idx,
-                obj_type_idx_ptr,
-                2,
-                EMPTY_STR.as_ptr(),
-            );
-            let discriminator = match args[i].alloc_type {
+            let discriminator = match arg.alloc_type {
                 AllocType::Int => Value::ConstInt(NUMBER_DISCRIMINATOR),
                 AllocType::String => Value::ConstInt(STR_DISCRIMINATOR),
                 AllocType::Bool => {
@@ -115,25 +96,14 @@ impl<'a> ProcedureCallBuilder<'a> {
 
             LLVMBuildStore(self.builder, value_discriminator, type_attr_ptr);
             // Copy Compilisp object value
-            let value_ptr = *self.alloc_map.get(&args[i].id).unwrap();
+            let value_ptr = *self.alloc_map.get(&arg.id).unwrap();
             let src_value_type = self.type_factory.get_type(CompilispType::CompilispObject);
             let src_value =
                 LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
             LLVMBuildStore(self.builder, src_value, object_idx);
         }
-
-        let mut first_idx = [zero_idx, zero_idx];
-
-        let object_array_ptr = unsafe {
-            LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_array_type,
-                object_array,
-                first_idx.as_mut_ptr(),
-                2,
-                EMPTY_STR.as_ptr(),
-            )
-        };
+        let object_array_ptr =
+            GepBuilder::build(self.builder, object_array, object_array_type, &[0, 0]);
 
         let stack_size_value = self
             .expr_builder
@@ -167,9 +137,6 @@ impl<'a> ProcedureCallBuilder<'a> {
             .expr_builder
             .build_value(&Value::ConstInt(args.len() as i32));
 
-        let zero_idx = self.expr_builder.build_value(&Value::ConstInt(0));
-        let obj_type_idx = self.expr_builder.build_value(&Value::ConstInt(0));
-
         let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
         let object_array_type = LLVMArrayType(object_type, args.len() as _);
         let object_array =
@@ -181,33 +148,13 @@ impl<'a> ProcedureCallBuilder<'a> {
             name: name.as_str(),
         });
 
-        for i in 0..args.len() {
-            let index_value = self.expr_builder.build_value(&Value::ConstInt(i as i32));
+        for (i, arg) in args.iter().enumerate() {
+            let object_idx =
+                GepBuilder::build(self.builder, object_array, object_array_type, &[0, i]);
 
-            let mut val_indexes = [zero_idx, index_value];
-            let mut obj_type_indexes = [zero_idx, obj_type_idx];
+            let type_attr_ptr = GepBuilder::build(self.builder, object_idx, object_type, &[0, 0]);
 
-            let object_idx_ptr = val_indexes.as_mut_ptr();
-            let obj_type_idx_ptr = obj_type_indexes.as_mut_ptr();
-            let arg_str = CString::new("arg_obj").unwrap();
-            let object_idx = LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_array_type,
-                object_array,
-                object_idx_ptr,
-                2,
-                arg_str.as_ptr(),
-            );
-
-            let type_attr_ptr = LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_type,
-                object_idx,
-                obj_type_idx_ptr,
-                2,
-                EMPTY_STR.as_ptr(),
-            );
-            let discriminator = match args[i].alloc_type {
+            let discriminator = match arg.alloc_type {
                 AllocType::Int => Value::ConstInt(NUMBER_DISCRIMINATOR),
                 AllocType::String => Value::ConstInt(STR_DISCRIMINATOR),
                 AllocType::Bool => {
@@ -218,25 +165,15 @@ impl<'a> ProcedureCallBuilder<'a> {
 
             LLVMBuildStore(self.builder, value_discriminator, type_attr_ptr);
             // Copy Compilisp object value
-            let value_ptr = *self.alloc_map.get(&args[i].id).unwrap();
+            let value_ptr = *self.alloc_map.get(&arg.id).unwrap();
             let src_value_type = self.type_factory.get_type(CompilispType::CompilispObject);
             let src_value =
                 LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
             LLVMBuildStore(self.builder, src_value, object_idx);
         }
 
-        let mut first_idx = [zero_idx, zero_idx];
-
-        let object_array_ptr = unsafe {
-            LLVMBuildInBoundsGEP2(
-                self.builder,
-                object_array_type,
-                object_array,
-                first_idx.as_mut_ptr(),
-                2,
-                EMPTY_STR.as_ptr(),
-            )
-        };
+        let object_array_ptr =
+            GepBuilder::build(self.builder, object_array, object_array_type, &[0, 0]);
 
         let mut args = [opname, object_array_ptr, stack_size_value];
         let res_name = CString::new("result").unwrap();

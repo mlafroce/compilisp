@@ -4,6 +4,7 @@ mod debuginfo_builder;
 mod error;
 mod function_builder;
 mod function_factory;
+mod gep_builder;
 pub mod llvm;
 mod llvm_compilisp;
 mod procedure_call_builder;
