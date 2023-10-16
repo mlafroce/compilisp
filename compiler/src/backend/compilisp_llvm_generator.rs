@@ -1,7 +1,7 @@
 use crate::backend::compilisp_ir::{AllocId, CompilispIr};
 use crate::backend::function_builder::FunctionBuilder;
 use crate::backend::function_factory::FunctionFactory;
-use crate::backend::gep_builder::GepBuilder;
+use crate::backend::llvm_builder::Builder;
 use crate::backend::procedure_call_builder::ProcedureCallBuilder;
 use crate::backend::runtime::{ELSE_STR, EMPTY_STR, FINALLY_STR, THEN_STR};
 use crate::backend::type_factory::{CompilispType, TypeFactory};
@@ -64,6 +64,8 @@ impl<'a> CompilispLLVMGenerator<'a> {
         unsafe { value_builder.build_value(context, self.builder, value, self.type_factory) }
     }
     pub fn build_instruction(&mut self, inst: CompilispIr) {
+        let builder = Builder::new(self.builder);
+
         match inst {
             CompilispIr::ConstInt { alloc_id, value } => {
                 let builder_value = Value::VarInt32("", Some(value));
@@ -101,18 +103,16 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 let cond_value = self.alloc_map.get(&cond_alloc).copied().unwrap();
                 let object_type = self.type_factory.get_type(CompilispType::CompilispObject);
 
-                let value_attr_ptr =
-                    GepBuilder::build(self.builder, cond_value, object_type, &[0, 1]);
+                let value_attr_ptr = builder.gep(cond_value, object_type, &[0, 1]);
 
                 let int_type = self.type_factory.get_type(CompilispType::BoolPtr);
                 let casted =
                     LLVMBuildBitCast(self.builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());
 
-                let cond_value = LLVMBuildLoad2(
-                    self.builder,
+                let cond_value =
+                    builder.load(
                     LLVMInt1TypeInContext(context),
                     casted,
-                    EMPTY_STR.as_ptr(),
                 );
 
                 let block_then = LLVMCreateBasicBlockInContext(context, THEN_STR.as_ptr());
@@ -123,9 +123,8 @@ impl<'a> CompilispLLVMGenerator<'a> {
                     block_then,
                     block_finally,
                 });
-                LLVMBuildCondBr(self.builder, cond_value, block_then, block_else);
-                LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_then);
-                LLVMPositionBuilderAtEnd(self.builder, block_then);
+                builder.cond_br(cond_value, block_then, block_else);
+                builder.insert_and_position_block(block_then)
             },
             CompilispIr::IfExpressionEndThen {
                 result_alloc,
@@ -150,21 +149,18 @@ impl<'a> CompilispLLVMGenerator<'a> {
                     LLVMBuildBr(self.builder, cur_block.block_finally);
                 }
             },
-            CompilispIr::IfExpressionElse => unsafe {
+            CompilispIr::IfExpressionElse => {
                 let cur_block = self.conditional_blocks.last().unwrap();
                 if let Some(block_else) = cur_block.block_else {
-                    LLVMInsertExistingBasicBlockAfterInsertBlock(self.builder, block_else);
-                    LLVMPositionBuilderAtEnd(self.builder, block_else);
+                    unsafe {
+                        builder.insert_and_position_block(block_else)
+                    }
                 }
             },
             CompilispIr::IfExpressionEndBlock => {
                 let cur_block = self.conditional_blocks.last().unwrap();
                 unsafe {
-                    LLVMInsertExistingBasicBlockAfterInsertBlock(
-                        self.builder,
-                        cur_block.block_finally,
-                    );
-                    LLVMPositionBuilderAtEnd(self.builder, cur_block.block_finally);
+                    builder.insert_and_position_block(cur_block.block_finally)
                 }
             }
             CompilispIr::IfExpressionEndExpression { .. } => {}
@@ -181,12 +177,12 @@ impl<'a> CompilispLLVMGenerator<'a> {
                 let int_type = self.type_factory.get_type(CompilispType::Int);
                 let obj_type = self.type_factory.get_type(CompilispType::CompilispObject);
                 let obj_ptr_type = self.type_factory.get_pointer(obj_type);
-                let builder = FunctionBuilder::new()
+                let fn_builder = FunctionBuilder::new()
                     .with_name(name.as_str())
                     .with_ret_type(obj_type)
                     .add_arg(int_type)
                     .add_arg(obj_ptr_type);
-                let new_function = unsafe { builder.build(self.module) };
+                let new_function = unsafe { fn_builder.build(self.module) };
                 let block = unsafe {
                     LLVMAppendBasicBlockInContext(context, new_function.0, EMPTY_STR.as_ptr())
                 };
@@ -202,7 +198,7 @@ impl<'a> CompilispLLVMGenerator<'a> {
                     let cur_arg = unsafe {
                         let object_type =
                             self.type_factory.get_type(CompilispType::CompilispObject);
-                        GepBuilder::build(self.builder, argv, object_type, &[i])
+                        builder.gep(argv, object_type, &[i])
                     };
 
                     alloc_id += 1;
@@ -211,15 +207,9 @@ impl<'a> CompilispLLVMGenerator<'a> {
             }
             CompilispIr::EndProcedure(return_id) => {
                 let return_alloc = self.alloc_map.get(&return_id).unwrap();
-                let value = unsafe {
-                    LLVMBuildLoad2(
-                        self.builder,
-                        self.type_factory.get_type(CompilispType::CompilispObject),
-                        *return_alloc,
-                        EMPTY_STR.as_ptr(),
-                    )
-                };
-                unsafe { LLVMBuildRet(self.builder, value) };
+                let return_type = self.type_factory.get_type(CompilispType::CompilispObject);
+                let value = unsafe { builder.load(return_type, *return_alloc) };
+                unsafe { builder.ret(value) };
             }
         }
     }

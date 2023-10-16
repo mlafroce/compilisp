@@ -3,7 +3,7 @@ extern crate lalrpop_util;
 
 use clap::Parser;
 use compilisp::ast::ModuleAst;
-use compilisp::backend::llvm::Context;
+use compilisp::backend::llvm_context::Context;
 use lalrpop_util::ParseError;
 use std::fs::File;
 use std::io;

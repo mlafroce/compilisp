@@ -4,7 +4,7 @@ use crate::backend::compilisp_llvm_generator::{
 };
 use crate::backend::error::CompilispResult;
 use crate::backend::function_factory::FunctionFactory;
-use crate::backend::gep_builder::GepBuilder;
+use crate::backend::llvm_builder::Builder;
 use crate::backend::runtime::EMPTY_STR;
 use crate::backend::type_factory::{CompilispType, TypeFactory};
 use crate::backend::value_builder::Value;
@@ -76,14 +76,13 @@ impl<'a> ProcedureCallBuilder<'a> {
         let object_array =
             unsafe { LLVMBuildAlloca(self.builder, object_array_type, EMPTY_STR.as_ptr()) };
 
+        let builder = Builder::new(self.builder);
         for (i, arg) in args.iter().enumerate() {
             let val_indexes = [0, i];
             let obj_type_indexes = [0, 0];
 
-            let object_idx =
-                GepBuilder::build(self.builder, object_array, object_array_type, &val_indexes);
-            let type_attr_ptr =
-                GepBuilder::build(self.builder, object_idx, object_type, &obj_type_indexes);
+            let object_idx = builder.gep(object_array, object_array_type, &val_indexes);
+            let type_attr_ptr = builder.gep(object_idx, object_type, &obj_type_indexes);
 
             let discriminator = match arg.alloc_type {
                 AllocType::Int => Value::ConstInt(NUMBER_DISCRIMINATOR),
@@ -102,8 +101,7 @@ impl<'a> ProcedureCallBuilder<'a> {
                 LLVMBuildLoad2(self.builder, src_value_type, value_ptr, EMPTY_STR.as_ptr());
             LLVMBuildStore(self.builder, src_value, object_idx);
         }
-        let object_array_ptr =
-            GepBuilder::build(self.builder, object_array, object_array_type, &[0, 0]);
+        let object_array_ptr = builder.gep(object_array, object_array_type, &[0, 0]);
 
         let stack_size_value = self
             .expr_builder
@@ -128,6 +126,8 @@ impl<'a> ProcedureCallBuilder<'a> {
         args: &[Alloc],
         result_alloc: LLVMValueRef,
     ) -> LLVMValueRef {
+        let builder = Builder::new(self.builder);
+
         let (fn_ref, fn_argtypes) = self
             .function_factory
             .get("compilisp_procedure_call")
@@ -149,10 +149,9 @@ impl<'a> ProcedureCallBuilder<'a> {
         });
 
         for (i, arg) in args.iter().enumerate() {
-            let object_idx =
-                GepBuilder::build(self.builder, object_array, object_array_type, &[0, i]);
+            let object_idx = builder.gep(object_array, object_array_type, &[0, i]);
 
-            let type_attr_ptr = GepBuilder::build(self.builder, object_idx, object_type, &[0, 0]);
+            let type_attr_ptr = builder.gep(object_idx, object_type, &[0, 0]);
 
             let discriminator = match arg.alloc_type {
                 AllocType::Int => Value::ConstInt(NUMBER_DISCRIMINATOR),
@@ -172,8 +171,7 @@ impl<'a> ProcedureCallBuilder<'a> {
             LLVMBuildStore(self.builder, src_value, object_idx);
         }
 
-        let object_array_ptr =
-            GepBuilder::build(self.builder, object_array, object_array_type, &[0, 0]);
+        let object_array_ptr = builder.gep(object_array, object_array_type, &[0, 0]);
 
         let mut args = [opname, object_array_ptr, stack_size_value];
         let res_name = CString::new("result").unwrap();

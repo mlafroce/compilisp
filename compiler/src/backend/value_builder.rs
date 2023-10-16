@@ -1,4 +1,4 @@
-use crate::backend::gep_builder::GepBuilder;
+use crate::backend::llvm_builder::Builder;
 use crate::backend::runtime::EMPTY_STR;
 use crate::backend::type_factory::{CompilispType, TypeFactory};
 use llvm_sys::core::{
@@ -33,6 +33,7 @@ impl ValueBuilder {
         value: &Value,
         type_factory: &TypeFactory,
     ) -> LLVMValueRef {
+        let g_builder = Builder::new(builder);
         match value {
             Value::GlobalString { name, value } => {
                 let escaped_value = value.replace("\\n", "\n");
@@ -44,13 +45,13 @@ impl ValueBuilder {
                 let alloca_type = type_factory.get_type(CompilispType::CompilispObject);
                 let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, EMPTY_STR.as_ptr()) };
 
-                let type_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 0]);
+                let type_attr_ptr = g_builder.gep(alloca, alloca_type, &[0, 0]);
 
                 let const_disc_value = self.build_const_int(2, type_factory);
                 unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
 
                 let global_str = self.get_or_create_global_str(builder, &escaped_value, "name");
-                let value_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 1]);
+                let value_attr_ptr = g_builder.gep(alloca, alloca_type, &[0, 1]);
 
                 // Save constant in stack
                 unsafe { LLVMBuildStore(builder, global_str, value_attr_ptr) };
@@ -63,10 +64,10 @@ impl ValueBuilder {
                 let alloca = unsafe { LLVMBuildAlloca(builder, alloca_type, name.as_ptr()) };
                 if let Some(value) = *init_value {
                     // Create constant `num`
-                    let type_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 0]);
+                    let type_attr_ptr = g_builder.gep(alloca, alloca_type, &[0, 0]);
                     let const_disc_value = self.build_const_int(0, type_factory);
                     unsafe { LLVMBuildStore(builder, const_disc_value, type_attr_ptr) };
-                    let value_attr_ptr = GepBuilder::build(builder, alloca, alloca_type, &[0, 1]);
+                    let value_attr_ptr = g_builder.gep(alloca, alloca_type, &[0, 1]);
                     let int_type = type_factory.get_type(CompilispType::IntPtr);
                     let casted =
                         LLVMBuildBitCast(builder, value_attr_ptr, int_type, EMPTY_STR.as_ptr());
